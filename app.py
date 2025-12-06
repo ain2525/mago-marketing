@@ -4,7 +4,7 @@ import altair as alt
 from datetime import datetime, timedelta
 
 # --- ページ設定 ---
-st.set_page_config(page_title="まごころサポート分析 v7", layout="wide")
+st.set_page_config(page_title="まごころサポート分析 v8", layout="wide")
 st.title("📊 まごころサポート：広告×商談 分析ダッシュボード")
 
 # --- データ読み込み関数 ---
@@ -26,7 +26,6 @@ st.sidebar.header("⚙️ 判定基準の設定")
 cpa_limit = st.sidebar.number_input("許容CPA（円）", value=10000, step=1000)
 connect_target = st.sidebar.slider("目標接続率（%）", 0, 100, 50)
 meeting_target = st.sidebar.slider("目標商談化率（%）", 0, 50, 18)
-meeting_count_min = st.sidebar.number_input("最低商談数（最優秀の条件）", value=2, step=1)
 
 # --- ファイルアップロード ---
 col1, col2 = st.columns(2)
@@ -61,13 +60,13 @@ if meta_file and hs_file:
                 st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
                 st.stop()
 
-            # === 日付列の変換（存在する場合） ===
+            # === 日付列の変換 ===
             if date_col_meta:
                 df_meta[date_col_meta] = pd.to_datetime(df_meta[date_col_meta], errors='coerce')
             if date_col_hs:
                 df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 期間フィルター（日付列がある場合のみ） ===
+            # === 期間フィルター ===
             st.subheader("📅 分析期間の設定")
             filter_enabled = st.checkbox("期間で絞り込む", value=False)
             
@@ -76,17 +75,16 @@ if meta_file and hs_file:
                 with col_date1:
                     if date_col_hs:
                         min_date_hs = df_hs[date_col_hs].min()
-                        max_date_hs = df_hs[date_col_hs].max()
                         start_date = st.date_input("開始日", value=min_date_hs if pd.notna(min_date_hs) else datetime.now() - timedelta(days=30))
                     else:
                         start_date = st.date_input("開始日", value=datetime.now() - timedelta(days=30))
                 with col_date2:
                     if date_col_hs:
+                        max_date_hs = df_hs[date_col_hs].max()
                         end_date = st.date_input("終了日", value=max_date_hs if pd.notna(max_date_hs) else datetime.now())
                     else:
                         end_date = st.date_input("終了日", value=datetime.now())
                 
-                # フィルタリング実行
                 start_datetime = pd.to_datetime(start_date)
                 end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
                 
@@ -104,19 +102,17 @@ if meta_file and hs_file:
             st.sidebar.subheader("🔍 デバッグ情報")
             st.sidebar.write(f"**Meta広告データ:** {len(df_meta)}行")
             st.sidebar.write(f"**HubSpotデータ:** {len(df_hs)}行")
-            st.sidebar.write(f"**消化金額列:** {spend_col}")
             
             if deal_col:
                 st.sidebar.write(f"**商談列名:** `{deal_col}`")
                 deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
-                st.sidebar.write("**商談列の値の分布:**")
+                st.sidebar.write("**商談列の値:**")
                 st.sidebar.dataframe(deal_values, use_container_width=True)
 
             # === 1. データ結合キーの作成 ===
             df_meta['key'] = df_meta[name_col].astype(str).str.extract(r'(bn\d+)', expand=False)
             df_hs['key'] = df_hs[utm_col].astype(str).str.strip()
             
-            # キーがない行を除外
             df_meta = df_meta[df_meta['key'].notna()]
             df_hs = df_hs[df_hs['key'].notna()]
 
@@ -124,9 +120,8 @@ if meta_file and hs_file:
             meta_spend = df_meta.groupby('key')[spend_col].sum().reset_index()
             meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
             
-            # デバッグ：Meta側の消化金額を表示
             st.sidebar.markdown("---")
-            st.sidebar.write("**Meta側 消化金額（バナー別）:**")
+            st.sidebar.write("**Meta消化金額（バナー別）:**")
             st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
 
             # === 3. HubSpot側でリード数・接続・商談をカウント ===
@@ -164,7 +159,6 @@ if meta_file and hs_file:
                 hs_summary['商談実施数'] = 0
                 hs_summary['商談予約数'] = 0
 
-            # 欠損値を0埋め
             hs_summary = hs_summary.fillna(0)
             hs_summary['接続数'] = hs_summary['接続数'].astype(int)
             hs_summary['商談実施数'] = hs_summary['商談実施数'].astype(int)
@@ -188,28 +182,22 @@ if meta_file and hs_file:
                 axis=1
             )
 
-            # === 6. 判定ロジック ===
+            # === 6. 判定ロジック（商談化率重視版） ===
             def judge(row):
-                total_meetings = row['商談実施数'] + row['商談予約数']
-                
                 cpa_ok = row['CPA'] > 0 and row['CPA'] <= cpa_limit
                 connect_ok = row['接続率'] >= connect_target
                 meeting_ok = row['商談化率'] >= meeting_target
-                meeting_count_ok = total_meetings >= meeting_count_min
                 
                 conditions_met = sum([cpa_ok, connect_ok, meeting_ok])
                 
-                if conditions_met == 3 and meeting_count_ok:
+                # 商談化率が目標以上なら最優秀の可能性あり
+                if conditions_met == 3:
                     return "🏆 最優秀"
-                elif conditions_met == 3 and total_meetings > 0:
-                    return "🥇 優秀(商談少)"
-                elif conditions_met == 3 and total_meetings == 0:
-                    return "🟡 要改善(商談0)"
-                elif conditions_met == 2 and total_meetings >= meeting_count_min:
+                elif conditions_met == 2 and meeting_ok:
                     return "🥇 優秀"
-                elif conditions_met == 2 and total_meetings > 0:
+                elif conditions_met == 2:
                     return "🟡 要改善"
-                elif conditions_met == 1 and total_meetings > 0:
+                elif conditions_met == 1 and meeting_ok:
                     return "🟡 要改善"
                 else:
                     return "🛑 停止推奨"
@@ -255,6 +243,7 @@ if meta_file and hs_file:
 
             st.markdown("---")
 
+            # === 9. バナー別評価表（数値表記改善版） ===
             st.subheader("📋 バナー別 評価表")
             
             display_df = result.copy()
@@ -262,29 +251,40 @@ if meta_file and hs_file:
                 'key': 'バナーID',
                 spend_col: '消化金額'
             })
-            display_df['接続率'] = display_df['接続率'].round(1)
-            display_df['商談化率'] = display_df['商談化率'].round(1)
             
-            def color_judgment(val):
-                if val == "🏆 最優秀":
-                    return 'background-color: #d4edda'
-                elif "優秀" in val:
-                    return 'background-color: #d1ecf1'
-                elif "要改善" in val:
-                    return 'background-color: #fff3cd'
-                elif "停止" in val:
-                    return 'background-color: #f8d7da'
-                return ''
+            # 数値フォーマット用のカラムを作成
+            display_df['消化金額_表示'] = display_df['消化金額'].apply(lambda x: f"{int(x):,}")
+            display_df['CPA_表示'] = display_df['CPA'].apply(lambda x: f"{int(x):,}")
+            display_df['接続率_表示'] = display_df['接続率'].apply(lambda x: f"{x:.1f}%")
+            display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
             
-            styled_df = display_df[['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']].sort_values('商談化率', ascending=False)
+            # 表示用データフレーム
+            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '商談実施数', '商談予約数']].copy()
+            show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']
+            show_df = show_df.sort_values(by='商談化率', ascending=False, key=lambda x: display_df['商談化率'])
+            
+            # 色付け用に元の判定列を保持
+            def highlight_row(row):
+                判定 = row['判定']
+                if 判定 == "🏆 最優秀":
+                    color = 'background-color: #d4edda'
+                elif "優秀" in 判定:
+                    color = 'background-color: #d1ecf1'
+                elif "要改善" in 判定:
+                    color = 'background-color: #fff3cd'
+                elif "停止" in 判定:
+                    color = 'background-color: #f8d7da'
+                else:
+                    color = ''
+                return [color] * len(row)
             
             st.dataframe(
-                styled_df.style.applymap(color_judgment, subset=['判定']),
+                show_df.style.apply(highlight_row, axis=1),
                 use_container_width=True,
                 hide_index=True
             )
 
-            # === 9. AIアクション提案 ===
+            # === 10. AIアクション提案 ===
             st.divider()
             st.subheader("🤖 AIによる評価と推奨アクション")
             
@@ -294,13 +294,13 @@ if meta_file and hs_file:
             stop = result[result['判定'] == "🛑 停止推奨"]['key'].tolist()
             
             if best:
-                st.success(f"**【予算集中！】** {', '.join(best)} → 商談数{meeting_count_min}件以上＋3指標クリア。")
+                st.success(f"**【予算集中！】** {', '.join(best)} → CPA・接続率・商談化率すべて基準クリア。予算を最大化してください。")
             if good:
                 good_filtered = [b for b in good if b not in best]
                 if good_filtered:
-                    st.info(f"**【惜しい！】** {', '.join(good_filtered)} → 3指標達成だが商談数{meeting_count_min}件未満。")
+                    st.info(f"**【有望株】** {', '.join(good_filtered)} → 商談化率は目標達成。CPA or 接続率を改善すれば最優秀に。")
             if improve:
-                st.warning(f"**【要分析】** {', '.join(improve)} → LP改善や接続体制の見直しを。")
+                st.warning(f"**【要分析】** {', '.join(improve)} → LP改善や接続体制の見直しを検討してください。")
             if stop:
                 st.error(f"**【停止検討】** {', '.join(stop)} → 予算を優秀バナーに振り替えてください。")
 
