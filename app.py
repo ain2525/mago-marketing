@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from PIL import Image
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Meta広告×セールスダッシュボード", layout="wide")
+st.set_page_config(page_title="Meta広告×セールス チェックボード", layout="wide")
 
 # --- ロゴ表示 ---
 try:
