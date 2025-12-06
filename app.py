@@ -70,6 +70,7 @@ if meta_file and hs_file:
             utm_col = next((c for c in hs_cols if 'UTM' in str(c) or 'Content' in str(c)), None)
             connect_col = next((c for c in hs_cols if '接続' in str(c)), None)
             deal_col = next((c for c in hs_cols if '商談' in str(c)), None)
+            attr_col = next((c for c in hs_cols if '属性' in str(c)), None)
             date_col_hs = next((c for c in hs_cols if '作成日' in str(c) or 'Created' in str(c) or '日付' in str(c)), None)
 
             if not all([name_col, spend_col, utm_col]):
@@ -116,6 +117,12 @@ if meta_file and hs_file:
                 deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
                 st.sidebar.write("商談列の値:")
                 st.sidebar.dataframe(deal_values, use_container_width=True)
+            
+            if attr_col:
+                st.sidebar.write(f"属性列名: `{attr_col}`")
+                attr_values = df_hs[attr_col].fillna('(空白)').astype(str).value_counts()
+                st.sidebar.write("属性列の値:")
+                st.sidebar.dataframe(attr_values, use_container_width=True)
 
             # === 1. データ結合キーの作成 ===
             df_meta['key'] = df_meta[name_col].astype(str).str.extract(r'(bn\d+)', expand=False)
@@ -132,11 +139,12 @@ if meta_file and hs_file:
             st.sidebar.write("Meta消化金額（バナー別）:")
             st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
 
-            # === 3. HubSpot側でリード数・接続・商談をカウント ===
+            # === 3. HubSpot側でリード数・接続・商談・法人をカウント ===
             hs_summary = df_hs.groupby('key').agg(
                 リード数=('key', 'size')
             ).reset_index()
 
+            # 接続数
             if connect_col:
                 connect_df = df_hs[df_hs[connect_col].fillna('').astype(str).str.contains('あり|TRUE|Yes|true|済', case=False, na=False)]
                 connect_count = connect_df.groupby('key').size().reset_index(name='接続数')
@@ -144,6 +152,7 @@ if meta_file and hs_file:
             else:
                 hs_summary['接続数'] = 0
             
+            # 商談実施数・予約数
             if deal_col:
                 df_hs['商談_normalized'] = df_hs[deal_col].fillna('').astype(str).str.lower().str.strip()
                 
@@ -164,11 +173,21 @@ if meta_file and hs_file:
             else:
                 hs_summary['商談実施数'] = 0
                 hs_summary['商談予約数'] = 0
+            
+            # 法人数
+            if attr_col:
+                corp_df = df_hs[df_hs[attr_col].fillna('').astype(str).str.contains('法人', case=False, na=False)]
+                corp_count = corp_df.groupby('key').size().reset_index(name='法人数')
+                hs_summary = pd.merge(hs_summary, corp_count, on='key', how='left')
+                st.sidebar.write(f"法人数: {len(corp_df)}件")
+            else:
+                hs_summary['法人数'] = 0
 
             hs_summary = hs_summary.fillna(0)
             hs_summary['接続数'] = hs_summary['接続数'].astype(int)
             hs_summary['商談実施数'] = hs_summary['商談実施数'].astype(int)
             hs_summary['商談予約数'] = hs_summary['商談予約数'].astype(int)
+            hs_summary['法人数'] = hs_summary['法人数'].astype(int)
 
             # === 4. Meta消化金額と結合 ===
             result = pd.merge(hs_summary, meta_spend, on='key', how='left')
@@ -185,6 +204,10 @@ if meta_file and hs_file:
             )
             result['商談化率'] = result.apply(
                 lambda x: ((x['商談実施数'] + x['商談予約数']) / x['リード数'] * 100) if x['リード数'] > 0 else 0,
+                axis=1
+            )
+            result['法人化率'] = result.apply(
+                lambda x: (x['法人数'] / x['リード数'] * 100) if x['リード数'] > 0 else 0,
                 axis=1
             )
 
@@ -209,21 +232,24 @@ if meta_file and hs_file:
             
             result['判定'] = result.apply(judge, axis=1)
 
-            # === 7. 全体サマリー（修正版） ===
+            # === 7. 全体サマリー（2行レイアウト） ===
             total_spend = result[spend_col].sum()
             total_leads = result['リード数'].sum()
             total_connect = result['接続数'].sum()
             total_deal = result['商談実施数'].sum()
             total_plan = result['商談予約数'].sum()
+            total_corp = result['法人数'].sum()
             avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
             avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
             avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
+            avg_corp = (total_corp / total_leads * 100) if total_leads > 0 else 0
 
             st.subheader("全体実績サマリー")
 
-            cols = st.columns(6)
-
-            with cols[0]:
+            # 1行目
+            cols_row1 = st.columns(4)
+            
+            with cols_row1[0]:
                 st.markdown(f"""
                 <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
                     <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>総消化金額</div>
@@ -232,7 +258,7 @@ if meta_file and hs_file:
                 </div>
                 """, unsafe_allow_html=True)
 
-            with cols[1]:
+            with cols_row1[1]:
                 st.markdown(f"""
                 <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
                     <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>総リード数</div>
@@ -241,7 +267,7 @@ if meta_file and hs_file:
                 </div>
                 """, unsafe_allow_html=True)
 
-            with cols[2]:
+            with cols_row1[2]:
                 st.markdown(f"""
                 <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
                     <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>接続数</div>
@@ -250,7 +276,7 @@ if meta_file and hs_file:
                 </div>
                 """, unsafe_allow_html=True)
 
-            with cols[3]:
+            with cols_row1[3]:
                 st.markdown(f"""
                 <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
                     <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>平均CPA</div>
@@ -259,7 +285,10 @@ if meta_file and hs_file:
                 </div>
                 """, unsafe_allow_html=True)
 
-            with cols[4]:
+            # 2行目
+            cols_row2 = st.columns(4)
+            
+            with cols_row2[0]:
                 st.markdown(f"""
                 <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
                     <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>商談実施数</div>
@@ -268,12 +297,28 @@ if meta_file and hs_file:
                 </div>
                 """, unsafe_allow_html=True)
 
-            with cols[5]:
+            with cols_row2[1]:
                 st.markdown(f"""
                 <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
                     <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>商談予約数</div>
                     <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>{int(total_plan)}件</div>
                     <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'>商談化率 {avg_meeting:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row2[2]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
+                    <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>法人数</div>
+                    <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>{int(total_corp)}件</div>
+                    <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'>法人化率 {avg_corp:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row2[3]:
+                st.markdown("""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: center; align-items: center; opacity: 0;'>
+                    <div>-</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -292,9 +337,10 @@ if meta_file and hs_file:
             display_df['CPA_表示'] = display_df['CPA'].apply(lambda x: f"{int(x):,}")
             display_df['接続率_表示'] = display_df['接続率'].apply(lambda x: f"{x:.1f}%")
             display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
+            display_df['法人化率_表示'] = display_df['法人化率'].apply(lambda x: f"{x:.1f}%")
             
-            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '商談実施数', '商談予約数']].copy()
-            show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']
+            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人化率_表示', '商談実施数', '商談予約数', '法人数']].copy()
+            show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人化率', '商談実施数', '商談予約数', '法人数']
             show_df = show_df.sort_values(by='商談化率', ascending=False, key=lambda x: display_df['商談化率'])
             
             def highlight_row(row):
@@ -351,7 +397,7 @@ if meta_file and hs_file:
                         range=['#28a745', '#17a2b8', '#ffc107', '#dc3545']
                     )),
                     size=alt.Size('リード数:Q', legend=None),
-                    tooltip=['key', 'CPA', '接続率', '商談化率', 'リード数', '判定']
+                    tooltip=['key', 'CPA', '接続率', '商談化率', '法人化率', 'リード数', '判定']
                 ).properties(height=450).interactive()
                 st.altair_chart(chart, use_container_width=True)
 
