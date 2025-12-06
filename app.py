@@ -209,71 +209,78 @@ if meta_file and hs_file:
             
             result['判定'] = result.apply(judge, axis=1)
 
-            # === 7. 全体サマリー（統一サイズ） ===
-            total_spend = result[spend_col].sum()
-            total_leads = result['リード数'].sum()
-            total_connect = result['接続数'].sum()
-            total_deal = result['商談実施数'].sum()
-            total_plan = result['商談予約数'].sum()
-            avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
-            avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
-            avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
+            # === 7. 全体サマリー（1行6列完全統一版） ===
+total_spend = result[spend_col].sum()
+total_leads = result['リード数'].sum()
+total_connect = result['接続数'].sum()
+total_deal = result['商談実施数'].sum()
+total_plan = result['商談予約数'].sum()
+avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
+avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
+avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
 
-            st.subheader("全体実績サマリー")
+st.subheader("全体実績サマリー")
 
-            # CSSで完全に統一されたサイズ
-            st.markdown("""
-            <style>
-            .metric-box {
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                padding: 20px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
-                min-height: 120px;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-            }
-            .metric-label {
-                font-size: 0.9rem;
-                opacity: 0.9;
-                margin-bottom: 8px;
-            }
-            .metric-value {
-                font-size: 1.8rem;
-                font-weight: bold;
-                margin-bottom: 4px;
-            }
-            .metric-sub {
-                font-size: 0.8rem;
-                opacity: 0.85;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+# カスタムCSS（シアン65% + イエロー20% = 水色系）
+st.markdown("""
+<style>
+.metric-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.metric-box {
+    border-radius: 8px;
+    padding: 18px;
+    background-color: rgb(64, 180, 200);
+    color: white;
+    height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+.metric-label {
+    font-size: 0.8rem;
+    font-weight: 400;
+    opacity: 0.95;
+}
+.metric-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+.metric-sub {
+    font-size: 0.7rem;
+    font-weight: 400;
+    opacity: 0.9;
+}
+</style>
+""", unsafe_allow_html=True)
 
-            cols = st.columns(6)
+metrics = [
+    ("総消化金額", f"¥{int(total_spend):,}", ""),
+    ("総リード数", f"{int(total_leads)}件", ""),
+    ("接続数", f"{int(total_connect)}件", f"接続率 {avg_connect:.1f}%"),
+    ("平均CPA", f"¥{avg_cpa:,}", ""),
+    ("商談実施数", f"{int(total_deal)}件", ""),
+    ("商談予約数", f"{int(total_plan)}件", f"商談化率 {avg_meeting:.1f}%")
+]
 
-            metrics = [
-                ("総消化金額", f"¥{int(total_spend):,}", ""),
-                ("総リード数", f"{int(total_leads)}件", ""),
-                ("接続数", f"{int(total_connect)}件", f"接続率 {avg_connect:.1f}%"),
-                ("平均CPA", f"¥{avg_cpa:,}", ""),
-                ("商談実施数", f"{int(total_deal)}件", ""),
-                ("商談予約数", f"{int(total_plan)}件", f"商談化率 {avg_meeting:.1f}%")
-            ]
+html = '<div class="metric-row">'
+for label, value, sub in metrics:
+    html += f"""
+    <div class='metric-box'>
+        <div class='metric-label'>{label}</div>
+        <div class='metric-value'>{value}</div>
+        <div class='metric-sub'>{sub}</div>
+    </div>
+    """
+html += '</div>'
 
-            for col, (label, value, sub) in zip(cols, metrics):
-                with col:
-                    st.markdown(f"""
-                    <div class='metric-box'>
-                        <div class='metric-label'>{label}</div>
-                        <div class='metric-value'>{value}</div>
-                        <div class='metric-sub'>{sub}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+st.markdown(html, unsafe_allow_html=True)
 
-            st.markdown("---")
+st.markdown("---")
 
             # === 8. バナー別評価表 ===
             st.subheader("バナー別 評価表")
