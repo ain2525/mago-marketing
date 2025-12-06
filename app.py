@@ -4,7 +4,7 @@ import altair as alt
 from datetime import datetime, timedelta
 
 # --- ページ設定 ---
-st.set_page_config(page_title="まごころサポート分析 v9", layout="wide")
+st.set_page_config(page_title="まごころサポート分析 v10", layout="wide")
 st.title("📊 まごころサポート：広告×商談 分析ダッシュボード")
 
 # --- データ読み込み関数 ---
@@ -66,36 +66,31 @@ if meta_file and hs_file:
             if date_col_hs:
                 df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 期間フィルター ===
-            st.subheader("📅 分析期間の設定")
-            filter_enabled = st.checkbox("期間で絞り込む", value=False)
+            # === 期間フィルター（サイドバーに移動） ===
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("📅 分析期間の設定")
+            filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
             
             if filter_enabled:
-                col_date1, col_date2 = st.columns(2)
-                with col_date1:
-                    if date_col_hs:
-                        min_date_hs = df_hs[date_col_hs].min()
-                        start_date = st.date_input("開始日", value=min_date_hs if pd.notna(min_date_hs) else datetime.now() - timedelta(days=30))
-                    else:
-                        start_date = st.date_input("開始日", value=datetime.now() - timedelta(days=30))
-                with col_date2:
-                    if date_col_hs:
-                        max_date_hs = df_hs[date_col_hs].max()
-                        end_date = st.date_input("終了日", value=max_date_hs if pd.notna(max_date_hs) else datetime.now())
-                    else:
-                        end_date = st.date_input("終了日", value=datetime.now())
+                if date_col_hs:
+                    min_date_hs = df_hs[date_col_hs].min()
+                    max_date_hs = df_hs[date_col_hs].max()
+                    start_date = st.sidebar.date_input("開始日", value=min_date_hs if pd.notna(min_date_hs) else datetime.now() - timedelta(days=30))
+                    end_date = st.sidebar.date_input("終了日", value=max_date_hs if pd.notna(max_date_hs) else datetime.now())
+                else:
+                    start_date = st.sidebar.date_input("開始日", value=datetime.now() - timedelta(days=30))
+                    end_date = st.sidebar.date_input("終了日", value=datetime.now())
                 
                 start_datetime = pd.to_datetime(start_date)
                 end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
                 
+                # フィルタリング実行
                 if date_col_meta:
                     df_meta = df_meta[(df_meta[date_col_meta] >= start_datetime) & (df_meta[date_col_meta] <= end_datetime)]
                 if date_col_hs:
                     df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
                 
-                st.info(f"📊 分析期間: {start_date} 〜 {end_date}")
-
-            st.divider()
+                st.sidebar.success(f"📊 {start_date} 〜 {end_date}")
 
             # === デバッグ情報 ===
             st.sidebar.markdown("---")
@@ -116,7 +111,7 @@ if meta_file and hs_file:
             df_meta = df_meta[df_meta['key'].notna()]
             df_hs = df_hs[df_hs['key'].notna()]
 
-            # === 2. Meta側の消化金額集計 ===
+            # === 2. Meta側の消化金額集計（フィルター後） ===
             meta_spend = df_meta.groupby('key')[spend_col].sum().reset_index()
             meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
             
@@ -203,7 +198,7 @@ if meta_file and hs_file:
             
             result['判定'] = result.apply(judge, axis=1)
 
-            # === 7. 全体サマリー（改善版） ===
+            # === 7. 全体サマリー（枠サイズ統一版） ===
             total_spend = result[spend_col].sum()
             total_leads = result['リード数'].sum()
             total_connect = result['接続数'].sum()
@@ -219,73 +214,57 @@ if meta_file and hs_file:
 
             with cols[0]:
                 st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
                     <p style='margin: 0; font-size: 0.85rem; color: #666;'>総消化金額</p>
-                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>¥{:,}</p>
+                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>¥{:,}</p>
                 </div>
                 """.format(int(total_spend)), unsafe_allow_html=True)
 
             with cols[1]:
                 st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
                     <p style='margin: 0; font-size: 0.85rem; color: #666;'>総リード数</p>
-                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
+                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
                 </div>
                 """.format(int(total_leads)), unsafe_allow_html=True)
 
             with cols[2]:
                 st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
                     <p style='margin: 0; font-size: 0.85rem; color: #666;'>接続数</p>
-                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
-                    <p style='margin: 4px 0 0 0; font-size: 0.8rem; color: #28a745;'>接続率 {:.1f}%</p>
+                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
+                    <p style='margin: 4px 0 0 0; font-size: 0.75rem; color: #28a745;'>接続率 {:.1f}%</p>
                 </div>
                 """.format(int(total_connect), avg_connect), unsafe_allow_html=True)
 
             with cols[3]:
                 st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
                     <p style='margin: 0; font-size: 0.85rem; color: #666;'>平均CPA</p>
-                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>¥{:,}</p>
+                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>¥{:,}</p>
                 </div>
                 """.format(avg_cpa), unsafe_allow_html=True)
 
             with cols[4]:
                 st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
                     <p style='margin: 0; font-size: 0.85rem; color: #666;'>商談実施数</p>
-                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
+                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
                 </div>
                 """.format(int(total_deal)), unsafe_allow_html=True)
 
             with cols[5]:
                 st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
                     <p style='margin: 0; font-size: 0.85rem; color: #666;'>商談予約数</p>
-                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
-                    <p style='margin: 4px 0 0 0; font-size: 0.8rem; color: #28a745;'>商談化率 {:.1f}%</p>
+                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
+                    <p style='margin: 4px 0 0 0; font-size: 0.75rem; color: #28a745;'>商談化率 {:.1f}%</p>
                 </div>
                 """.format(int(total_plan), avg_meeting), unsafe_allow_html=True)
 
             st.divider()
 
-            # === 8. バナー別パフォーマンス ===
-            st.subheader("📊 バナー別 総合評価")
-            
-            chart_data = result[result['リード数'] > 0].copy()
-            if len(chart_data) > 0:
-                chart = alt.Chart(chart_data).mark_circle(size=200).encode(
-                    x=alt.X('CPA:Q', title='CPA (円)', scale=alt.Scale(zero=False)),
-                    y=alt.Y('商談化率:Q', title='商談化率 (%)'),
-                    color=alt.Color('判定:N', legend=alt.Legend(title="判定")),
-                    size=alt.Size('リード数:Q', legend=None),
-                    tooltip=['key', 'CPA', '接続率', '商談化率', 'リード数', '判定']
-                ).properties(height=400).interactive()
-                st.altair_chart(chart, use_container_width=True)
-
-            st.markdown("---")
-
-            # === 9. バナー別評価表 ===
+            # === 8. バナー別評価表（上に移動） ===
             st.subheader("📋 バナー別 評価表")
             
             display_df = result.copy()
@@ -323,7 +302,7 @@ if meta_file and hs_file:
                 hide_index=True
             )
 
-            # === 10. AIアクション提案 ===
+            # === 9. AIアクション提案 ===
             st.divider()
             st.subheader("🤖 AIによる評価と推奨アクション")
             
@@ -342,6 +321,21 @@ if meta_file and hs_file:
                 st.warning(f"**【要分析】** {', '.join(improve)} → LP改善や接続体制の見直しを検討してください。")
             if stop:
                 st.error(f"**【停止検討】** {', '.join(stop)} → 予算を優秀バナーに振り替えてください。")
+
+            # === 10. バナー別総合評価（最下部に移動） ===
+            st.divider()
+            st.subheader("📊 バナー別 総合評価（分布図）")
+            
+            chart_data = result[result['リード数'] > 0].copy()
+            if len(chart_data) > 0:
+                chart = alt.Chart(chart_data).mark_circle(size=200).encode(
+                    x=alt.X('CPA:Q', title='CPA (円)', scale=alt.Scale(zero=False)),
+                    y=alt.Y('商談化率:Q', title='商談化率 (%)'),
+                    color=alt.Color('判定:N', legend=alt.Legend(title="判定")),
+                    size=alt.Size('リード数:Q', legend=None),
+                    tooltip=['key', 'CPA', '接続率', '商談化率', 'リード数', '判定']
+                ).properties(height=400).interactive()
+                st.altair_chart(chart, use_container_width=True)
 
         except Exception as e:
             st.error(f"処理エラー: {e}")
