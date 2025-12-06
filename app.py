@@ -70,6 +70,19 @@ if meta_file and hs_file:
             meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
 
             # === 3. HubSpot側でリード数・接続・商談をカウント ===
+            # === 3. HubSpot側でリード数・接続・商談をカウント === の直後に追加
+
+# ----- デバッグ：実際の値を確認 -----
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔍 デバッグ情報")
+if deal_col:
+    deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
+    st.sidebar.write("**商談列の実際の値:**")
+    st.sidebar.dataframe(deal_values)
+else:
+    st.sidebar.warning("商談列が見つかりません")
+# ----- デバッグここまで -----
+
             hs_summary = df_hs.groupby('key').agg(
                 リード数=('key', 'size')
             ).reset_index()
