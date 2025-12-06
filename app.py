@@ -2,10 +2,23 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import datetime, timedelta
+from PIL import Image
 
 # --- ページ設定 ---
-st.set_page_config(page_title="まごころサポート分析 v10", layout="wide")
-st.title("📊 まごころサポート：広告×商談 分析ダッシュボード")
+st.set_page_config(page_title="Meta広告×セールスダッシュボード", layout="wide")
+
+# --- ロゴ表示 ---
+try:
+    logo = Image.open("/mnt/user-data/uploads/FCロコ_白抜き-1-04.png")
+    col_logo, col_title = st.columns([1, 4])
+    with col_logo:
+        st.image(logo, width=150)
+    with col_title:
+        st.markdown("<h1 style='margin-top: 20px;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
+except:
+    st.title("Meta広告×セールスダッシュボード")
+
+st.markdown("---")
 
 # --- データ読み込み関数 ---
 def load_data(file):
@@ -22,19 +35,22 @@ def load_data(file):
         return None
 
 # --- サイドバー設定 ---
-st.sidebar.header("⚙️ 判定基準の設定")
+st.sidebar.header("判定基準の設定")
 cpa_limit = st.sidebar.number_input("許容CPA（円）", value=10000, step=1000)
 connect_target = st.sidebar.slider("目標接続率（%）", 0, 100, 50)
 meeting_target = st.sidebar.slider("目標商談化率（%）", 0, 50, 18)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("分析期間の設定")
+
 # --- ファイルアップロード ---
 col1, col2 = st.columns(2)
 with col1:
-    meta_file = st.file_uploader("📂 Meta広告実績", type=['xlsx', 'csv'])
+    meta_file = st.file_uploader("Meta広告実績", type=['xlsx', 'csv'])
 with col2:
-    hs_file = st.file_uploader("📂 HubSpotデータ", type=['xlsx', 'csv'])
+    hs_file = st.file_uploader("HubSpotデータ", type=['xlsx', 'csv'])
 
-st.divider()
+st.markdown("---")
 
 # --- 分析実行 ---
 if meta_file and hs_file:
@@ -66,9 +82,7 @@ if meta_file and hs_file:
             if date_col_hs:
                 df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 期間フィルター（サイドバーに移動） ===
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("📅 分析期間の設定")
+            # === 期間フィルター ===
             filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
             
             if filter_enabled:
@@ -84,24 +98,23 @@ if meta_file and hs_file:
                 start_datetime = pd.to_datetime(start_date)
                 end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
                 
-                # フィルタリング実行
                 if date_col_meta:
                     df_meta = df_meta[(df_meta[date_col_meta] >= start_datetime) & (df_meta[date_col_meta] <= end_datetime)]
                 if date_col_hs:
                     df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
                 
-                st.sidebar.success(f"📊 {start_date} 〜 {end_date}")
+                st.sidebar.info(f"{start_date} ~ {end_date}")
 
             # === デバッグ情報 ===
             st.sidebar.markdown("---")
-            st.sidebar.subheader("🔍 デバッグ情報")
-            st.sidebar.write(f"**Meta広告データ:** {len(df_meta)}行")
-            st.sidebar.write(f"**HubSpotデータ:** {len(df_hs)}行")
+            st.sidebar.subheader("デバッグ情報")
+            st.sidebar.write(f"Meta広告データ: {len(df_meta)}行")
+            st.sidebar.write(f"HubSpotデータ: {len(df_hs)}行")
             
             if deal_col:
-                st.sidebar.write(f"**商談列名:** `{deal_col}`")
+                st.sidebar.write(f"商談列名: `{deal_col}`")
                 deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
-                st.sidebar.write("**商談列の値:**")
+                st.sidebar.write("商談列の値:")
                 st.sidebar.dataframe(deal_values, use_container_width=True)
 
             # === 1. データ結合キーの作成 ===
@@ -111,12 +124,12 @@ if meta_file and hs_file:
             df_meta = df_meta[df_meta['key'].notna()]
             df_hs = df_hs[df_hs['key'].notna()]
 
-            # === 2. Meta側の消化金額集計（フィルター後） ===
+            # === 2. Meta側の消化金額集計 ===
             meta_spend = df_meta.groupby('key')[spend_col].sum().reset_index()
             meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
             
             st.sidebar.markdown("---")
-            st.sidebar.write("**Meta消化金額（バナー別）:**")
+            st.sidebar.write("Meta消化金額（バナー別）:")
             st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
 
             # === 3. HubSpot側でリード数・接続・商談をカウント ===
@@ -124,7 +137,6 @@ if meta_file and hs_file:
                 リード数=('key', 'size')
             ).reset_index()
 
-            # 接続数
             if connect_col:
                 connect_df = df_hs[df_hs[connect_col].fillna('').astype(str).str.contains('あり|TRUE|Yes|true|済', case=False, na=False)]
                 connect_count = connect_df.groupby('key').size().reset_index(name='接続数')
@@ -132,7 +144,6 @@ if meta_file and hs_file:
             else:
                 hs_summary['接続数'] = 0
             
-            # 商談実施数・予約数
             if deal_col:
                 df_hs['商談_normalized'] = df_hs[deal_col].fillna('').astype(str).str.lower().str.strip()
                 
@@ -145,8 +156,8 @@ if meta_file and hs_file:
                 deal_plan = df_hs[df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False)]
                 deal_plan_count = deal_plan.groupby('key').size().reset_index(name='商談予約数')
                 
-                st.sidebar.write(f"✅ 商談実施: **{len(deal_done)}件**")
-                st.sidebar.write(f"📅 商談予約: **{len(deal_plan)}件**")
+                st.sidebar.write(f"商談実施: {len(deal_done)}件")
+                st.sidebar.write(f"商談予約: {len(deal_plan)}件")
                 
                 hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
                 hs_summary = pd.merge(hs_summary, deal_plan_count, on='key', how='left')
@@ -186,19 +197,19 @@ if meta_file and hs_file:
                 conditions_met = sum([cpa_ok, connect_ok, meeting_ok])
                 
                 if conditions_met == 3:
-                    return "🏆 最優秀"
+                    return "最優秀"
                 elif conditions_met == 2 and meeting_ok:
-                    return "🥇 優秀"
+                    return "優秀"
                 elif conditions_met == 2:
-                    return "🟡 要改善"
+                    return "要改善"
                 elif conditions_met == 1 and meeting_ok:
-                    return "🟡 要改善"
+                    return "要改善"
                 else:
-                    return "🛑 停止推奨"
+                    return "停止推奨"
             
             result['判定'] = result.apply(judge, axis=1)
 
-            # === 7. 全体サマリー（枠サイズ統一版） ===
+            # === 7. 全体サマリー（統一サイズ） ===
             total_spend = result[spend_col].sum()
             total_leads = result['リード数'].sum()
             total_connect = result['接続数'].sum()
@@ -208,64 +219,64 @@ if meta_file and hs_file:
             avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
             avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
 
-            st.subheader("📈 全体実績サマリー")
+            st.subheader("全体実績サマリー")
+
+            # CSSで完全に統一されたサイズ
+            st.markdown("""
+            <style>
+            .metric-box {
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                min-height: 120px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+            .metric-label {
+                font-size: 0.9rem;
+                opacity: 0.9;
+                margin-bottom: 8px;
+            }
+            .metric-value {
+                font-size: 1.8rem;
+                font-weight: bold;
+                margin-bottom: 4px;
+            }
+            .metric-sub {
+                font-size: 0.8rem;
+                opacity: 0.85;
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
             cols = st.columns(6)
 
-            with cols[0]:
-                st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
-                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>総消化金額</p>
-                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>¥{:,}</p>
-                </div>
-                """.format(int(total_spend)), unsafe_allow_html=True)
+            metrics = [
+                ("総消化金額", f"¥{int(total_spend):,}", ""),
+                ("総リード数", f"{int(total_leads)}件", ""),
+                ("接続数", f"{int(total_connect)}件", f"接続率 {avg_connect:.1f}%"),
+                ("平均CPA", f"¥{avg_cpa:,}", ""),
+                ("商談実施数", f"{int(total_deal)}件", ""),
+                ("商談予約数", f"{int(total_plan)}件", f"商談化率 {avg_meeting:.1f}%")
+            ]
 
-            with cols[1]:
-                st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
-                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>総リード数</p>
-                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
-                </div>
-                """.format(int(total_leads)), unsafe_allow_html=True)
+            for col, (label, value, sub) in zip(cols, metrics):
+                with col:
+                    st.markdown(f"""
+                    <div class='metric-box'>
+                        <div class='metric-label'>{label}</div>
+                        <div class='metric-value'>{value}</div>
+                        <div class='metric-sub'>{sub}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-            with cols[2]:
-                st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
-                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>接続数</p>
-                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
-                    <p style='margin: 4px 0 0 0; font-size: 0.75rem; color: #28a745;'>接続率 {:.1f}%</p>
-                </div>
-                """.format(int(total_connect), avg_connect), unsafe_allow_html=True)
+            st.markdown("---")
 
-            with cols[3]:
-                st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
-                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>平均CPA</p>
-                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>¥{:,}</p>
-                </div>
-                """.format(avg_cpa), unsafe_allow_html=True)
-
-            with cols[4]:
-                st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
-                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>商談実施数</p>
-                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
-                </div>
-                """.format(int(total_deal)), unsafe_allow_html=True)
-
-            with cols[5]:
-                st.markdown("""
-                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 16px; background-color: #f8f9fa; min-height: 100px;'>
-                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>商談予約数</p>
-                    <p style='margin: 8px 0 0 0; font-size: 1.4rem; font-weight: bold;'>{}件</p>
-                    <p style='margin: 4px 0 0 0; font-size: 0.75rem; color: #28a745;'>商談化率 {:.1f}%</p>
-                </div>
-                """.format(int(total_plan), avg_meeting), unsafe_allow_html=True)
-
-            st.divider()
-
-            # === 8. バナー別評価表（上に移動） ===
-            st.subheader("📋 バナー別 評価表")
+            # === 8. バナー別評価表 ===
+            st.subheader("バナー別 評価表")
             
             display_df = result.copy()
             display_df = display_df.rename(columns={
@@ -284,7 +295,7 @@ if meta_file and hs_file:
             
             def highlight_row(row):
                 判定 = row['判定']
-                if 判定 == "🏆 最優秀":
+                if 判定 == "最優秀":
                     color = 'background-color: #d4edda'
                 elif "優秀" in 判定:
                     color = 'background-color: #d1ecf1'
@@ -302,39 +313,42 @@ if meta_file and hs_file:
                 hide_index=True
             )
 
-            # === 9. AIアクション提案 ===
-            st.divider()
-            st.subheader("🤖 AIによる評価と推奨アクション")
+            # === 9. アクション提案 ===
+            st.markdown("---")
+            st.subheader("推奨アクション")
             
-            best = result[result['判定'] == "🏆 最優秀"]['key'].tolist()
+            best = result[result['判定'] == "最優秀"]['key'].tolist()
             good = result[result['判定'].str.contains("優秀", na=False)]['key'].tolist()
             improve = result[result['判定'].str.contains("要改善", na=False)]['key'].tolist()
-            stop = result[result['判定'] == "🛑 停止推奨"]['key'].tolist()
+            stop = result[result['判定'] == "停止推奨"]['key'].tolist()
             
             if best:
-                st.success(f"**【予算集中！】** {', '.join(best)} → CPA・接続率・商談化率すべて基準クリア。予算を最大化してください。")
+                st.success(f"【予算集中】 {', '.join(best)} → CPA・接続率・商談化率すべて基準クリア")
             if good:
                 good_filtered = [b for b in good if b not in best]
                 if good_filtered:
-                    st.info(f"**【有望株】** {', '.join(good_filtered)} → 商談化率は目標達成。CPA or 接続率を改善すれば最優秀に。")
+                    st.info(f"【有望株】 {', '.join(good_filtered)} → 商談化率は目標達成。CPA or 接続率を改善すれば最優秀に")
             if improve:
-                st.warning(f"**【要分析】** {', '.join(improve)} → LP改善や接続体制の見直しを検討してください。")
+                st.warning(f"【要分析】 {', '.join(improve)} → LP改善や接続体制の見直しを検討")
             if stop:
-                st.error(f"**【停止検討】** {', '.join(stop)} → 予算を優秀バナーに振り替えてください。")
+                st.error(f"【停止検討】 {', '.join(stop)} → 予算を優秀バナーに振り替え")
 
-            # === 10. バナー別総合評価（最下部に移動） ===
-            st.divider()
-            st.subheader("📊 バナー別 総合評価（分布図）")
+            # === 10. 分布図 ===
+            st.markdown("---")
+            st.subheader("バナー別 パフォーマンス分布")
             
             chart_data = result[result['リード数'] > 0].copy()
             if len(chart_data) > 0:
                 chart = alt.Chart(chart_data).mark_circle(size=200).encode(
                     x=alt.X('CPA:Q', title='CPA (円)', scale=alt.Scale(zero=False)),
                     y=alt.Y('商談化率:Q', title='商談化率 (%)'),
-                    color=alt.Color('判定:N', legend=alt.Legend(title="判定")),
+                    color=alt.Color('判定:N', legend=alt.Legend(title="判定"), scale=alt.Scale(
+                        domain=['最優秀', '優秀', '要改善', '停止推奨'],
+                        range=['#28a745', '#17a2b8', '#ffc107', '#dc3545']
+                    )),
                     size=alt.Size('リード数:Q', legend=None),
                     tooltip=['key', 'CPA', '接続率', '商談化率', 'リード数', '判定']
-                ).properties(height=400).interactive()
+                ).properties(height=450).interactive()
                 st.altair_chart(chart, use_container_width=True)
 
         except Exception as e:
@@ -343,4 +357,4 @@ if meta_file and hs_file:
             st.code(traceback.format_exc())
 
 else:
-    st.info("👆 2つのファイルをアップロードすると分析が始まります")
+    st.info("Meta広告実績とHubSpotデータをアップロードしてください")
