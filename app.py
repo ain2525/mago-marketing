@@ -209,78 +209,92 @@ if meta_file and hs_file:
             
             result['判定'] = result.apply(judge, axis=1)
 
-            # === 7. 全体サマリー（1行6列完全統一版） ===
-            total_spend = result[spend_col].sum()
-            total_leads = result['リード数'].sum()
-            total_connect = result['接続数'].sum()
-            total_deal = result['商談実施数'].sum()
-            total_plan = result['商談予約数'].sum()
-            avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
-            avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
-            avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
+            # === 7. 全体サマリー（修正版） ===
+total_spend = result[spend_col].sum()
+total_leads = result['リード数'].sum()
+total_connect = result['接続数'].sum()
+total_deal = result['商談実施数'].sum()
+total_plan = result['商談予約数'].sum()
+avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
+avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
+avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
 
-            st.subheader("全体実績サマリー")
+st.subheader("全体実績サマリー")
 
-            # カスタムCSS（シアン65% + イエロー20% = 水色系）
-            st.markdown("""
-            <style>
-            .metric-row {
-                display: grid;
-                grid-template-columns: repeat(6, 1fr);
-                gap: 10px;
-                margin-bottom: 20px;
-            }
-            .metric-box {
-                border-radius: 8px;
-                padding: 18px;
-                background-color: rgb(64, 180, 200);
-                color: white;
-                height: 120px;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-            }
-            .metric-label {
-                font-size: 0.8rem;
-                font-weight: 400;
-                opacity: 0.95;
-            }
-            .metric-value {
-                font-size: 1.5rem;
-                font-weight: 700;
-                line-height: 1.2;
-            }
-            .metric-sub {
-                font-size: 0.7rem;
-                font-weight: 400;
-                opacity: 0.9;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+# Streamlitの標準columnsで実装（確実に動作）
+cols = st.columns(6)
 
-            metrics = [
-                ("総消化金額", f"¥{int(total_spend):,}", ""),
-                ("総リード数", f"{int(total_leads)}件", ""),
-                ("接続数", f"{int(total_connect)}件", f"接続率 {avg_connect:.1f}%"),
-                ("平均CPA", f"¥{avg_cpa:,}", ""),
-                ("商談実施数", f"{int(total_deal)}件", ""),
-                ("商談予約数", f"{int(total_plan)}件", f"商談化率 {avg_meeting:.1f}%")
-            ]
+# カスタムCSS
+st.markdown("""
+<style>
+.stMarkdown div[data-testid="stVerticalBlock"] > div {
+    background-color: rgb(64, 180, 200);
+    border-radius: 8px;
+    padding: 20px;
+    color: white;
+    height: 120px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+</style>
+""", unsafe_allow_html=True)
 
-            html = '<div class="metric-row">'
-            for label, value, sub in metrics:
-                html += f"""
-                <div class='metric-box'>
-                    <div class='metric-label'>{label}</div>
-                    <div class='metric-value'>{value}</div>
-                    <div class='metric-sub'>{sub}</div>
-                </div>
-                """
-            html += '</div>'
+with cols[0]:
+    st.markdown(f"""
+    <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
+        <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>総消化金額</div>
+        <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>¥{int(total_spend):,}</div>
+        <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-            st.markdown(html, unsafe_allow_html=True)
+with cols[1]:
+    st.markdown(f"""
+    <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
+        <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>総リード数</div>
+        <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>{int(total_leads)}件</div>
+        <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'></div>
+    </div>
+    """, unsafe_allow_html=True)
 
-            st.markdown("---")
+with cols[2]:
+    st.markdown(f"""
+    <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
+        <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>接続数</div>
+        <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>{int(total_connect)}件</div>
+        <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'>接続率 {avg_connect:.1f}%</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with cols[3]:
+    st.markdown(f"""
+    <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
+        <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>平均CPA</div>
+        <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>¥{avg_cpa:,}</div>
+        <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with cols[4]:
+    st.markdown(f"""
+    <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
+        <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>商談実施数</div>
+        <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>{int(total_deal)}件</div>
+        <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with cols[5]:
+    st.markdown(f"""
+    <div style='background-color: rgb(64, 180, 200); border-radius: 8px; padding: 20px; color: white; height: 120px; display: flex; flex-direction: column; justify-content: space-between;'>
+        <div style='font-size: 0.8rem; font-weight: 400; opacity: 0.95;'>商談予約数</div>
+        <div style='font-size: 1.5rem; font-weight: 700; line-height: 1.2;'>{int(total_plan)}件</div>
+        <div style='font-size: 0.7rem; font-weight: 400; opacity: 0.9;'>商談化率 {avg_meeting:.1f}%</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("---")
 
             # === 8. バナー別評価表 ===
             st.subheader("バナー別 評価表")
