@@ -3,7 +3,7 @@ import pandas as pd
 import altair as alt
 
 # --- ページ設定 ---
-st.set_page_config(page_title="まごころサポート分析 v5", layout="wide")
+st.set_page_config(page_title="まごころサポート分析 v6", layout="wide")
 st.title("📊 まごころサポート：広告×商談 分析ダッシュボード")
 
 # --- データ読み込み関数 ---
@@ -25,6 +25,7 @@ st.sidebar.header("⚙️ 判定基準の設定")
 cpa_limit = st.sidebar.number_input("許容CPA（円）", value=10000, step=1000)
 connect_target = st.sidebar.slider("目標接続率（%）", 0, 100, 50)
 meeting_target = st.sidebar.slider("目標商談化率（%）", 0, 50, 18)
+meeting_count_min = st.sidebar.number_input("最低商談数（最優秀の条件）", value=2, step=1)
 
 # --- ファイルアップロード ---
 col1, col2 = st.columns(2)
@@ -65,8 +66,6 @@ if meta_file and hs_file:
                 deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
                 st.sidebar.write("**商談列の値の分布:**")
                 st.sidebar.dataframe(deal_values, use_container_width=True)
-            else:
-                st.sidebar.warning("⚠️ 商談列が見つかりません")
 
             # === 1. データ結合キーの作成 ===
             df_meta['key'] = df_meta[name_col].astype(str).str.extract(r'(bn\d+)', expand=False)
@@ -93,29 +92,23 @@ if meta_file and hs_file:
             else:
                 hs_summary['接続数'] = 0
             
-            # 商談実施数・予約数（柔軟な判定）
+            # 商談実施数・予約数
             if deal_col:
-                # 全ての値を小文字化＆前後の空白除去
                 df_hs['商談_normalized'] = df_hs[deal_col].fillna('').astype(str).str.lower().str.strip()
                 
-                # 商談実施（「あり」「済」「完了」「実施」「done」「yes」「true」などを含む）
-                # ただし「予約」は除外
                 deal_done = df_hs[
                     (df_hs['商談_normalized'].str.contains('あり|済|完了|実施|done|yes|true', case=False, na=False)) &
                     (~df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False))
                 ]
                 deal_done_count = deal_done.groupby('key').size().reset_index(name='商談実施数')
                 
-                # 商談予約（「予約」「予定」「scheduled」などを含む）
                 deal_plan = df_hs[df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False)]
                 deal_plan_count = deal_plan.groupby('key').size().reset_index(name='商談予約数')
                 
-                # デバッグ：カウント結果を表示
                 st.sidebar.markdown("---")
                 st.sidebar.write(f"✅ 商談実施としてカウント: **{len(deal_done)}件**")
                 st.sidebar.write(f"📅 商談予約としてカウント: **{len(deal_plan)}件**")
                 
-                # 結合
                 hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
                 hs_summary = pd.merge(hs_summary, deal_plan_count, on='key', how='left')
             else:
@@ -141,27 +134,36 @@ if meta_file and hs_file:
                 lambda x: (x['接続数'] / x['リード数'] * 100) if x['リード数'] > 0 else 0,
                 axis=1
             )
-            # 商談化率は「実施+予約」で計算
             result['商談化率'] = result.apply(
                 lambda x: ((x['商談実施数'] + x['商談予約数']) / x['リード数'] * 100) if x['リード数'] > 0 else 0,
                 axis=1
             )
 
-            # === 6. 判定ロジック ===
+            # === 6. 判定ロジック（商談重視版） ===
             def judge(row):
-                conditions_met = 0
-                if row['CPA'] > 0 and row['CPA'] <= cpa_limit:
-                    conditions_met += 1
-                if row['接続率'] >= connect_target:
-                    conditions_met += 1
-                if row['商談化率'] >= meeting_target:
-                    conditions_met += 1
+                total_meetings = row['商談実施数'] + row['商談予約数']
                 
-                if conditions_met == 3:
+                # 各指標の達成状況
+                cpa_ok = row['CPA'] > 0 and row['CPA'] <= cpa_limit
+                connect_ok = row['接続率'] >= connect_target
+                meeting_ok = row['商談化率'] >= meeting_target
+                meeting_count_ok = total_meetings >= meeting_count_min
+                
+                # 達成数をカウント
+                conditions_met = sum([cpa_ok, connect_ok, meeting_ok])
+                
+                # 判定（商談数を最重視）
+                if conditions_met == 3 and meeting_count_ok:
                     return "🏆 最優秀"
-                elif conditions_met == 2:
+                elif conditions_met == 3 and total_meetings > 0:
+                    return "🥇 優秀(商談少)"
+                elif conditions_met == 3 and total_meetings == 0:
+                    return "🟡 要改善(商談0)"
+                elif conditions_met == 2 and total_meetings >= meeting_count_min:
                     return "🥇 優秀"
-                elif conditions_met == 1:
+                elif conditions_met == 2 and total_meetings > 0:
+                    return "🟡 要改善"
+                elif conditions_met == 1 and total_meetings > 0:
                     return "🟡 要改善"
                 else:
                     return "🛑 停止推奨"
@@ -200,10 +202,7 @@ if meta_file and hs_file:
                 chart = alt.Chart(chart_data).mark_circle(size=200).encode(
                     x=alt.X('CPA:Q', title='CPA (円)', scale=alt.Scale(zero=False)),
                     y=alt.Y('商談化率:Q', title='商談化率 (%)'),
-                    color=alt.Color('判定:N', legend=alt.Legend(title="判定"), scale=alt.Scale(
-                        domain=['🏆 最優秀', '🥇 優秀', '🟡 要改善', '🛑 停止推奨'],
-                        range=['#28a745', '#17a2b8', '#ffc107', '#dc3545']
-                    )),
+                    color=alt.Color('判定:N', legend=alt.Legend(title="判定")),
                     size=alt.Size('リード数:Q', legend=None),
                     tooltip=['key', 'CPA', '接続率', '商談化率', 'リード数', '判定']
                 ).properties(height=400).interactive()
@@ -226,15 +225,15 @@ if meta_file and hs_file:
             def color_judgment(val):
                 if val == "🏆 最優秀":
                     return 'background-color: #d4edda'
-                elif val == "🥇 優秀":
+                elif "優秀" in val:
                     return 'background-color: #d1ecf1'
-                elif val == "🟡 要改善":
+                elif "要改善" in val:
                     return 'background-color: #fff3cd'
-                elif val == "🛑 停止推奨":
+                elif "停止" in val:
                     return 'background-color: #f8d7da'
                 return ''
             
-            styled_df = display_df[['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']].sort_values('消化金額', ascending=False)
+            styled_df = display_df[['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']].sort_values('商談化率', ascending=False)
             
             st.dataframe(
                 styled_df.style.applymap(color_judgment, subset=['判定']),
@@ -247,18 +246,20 @@ if meta_file and hs_file:
             st.subheader("🤖 AIによる評価と推奨アクション")
             
             best = result[result['判定'] == "🏆 最優秀"]['key'].tolist()
-            good = result[result['判定'] == "🥇 優秀"]['key'].tolist()
-            improve = result[result['判定'] == "🟡 要改善"]['key'].tolist()
+            good = result[result['判定'].str.contains("優秀", na=False)]['key'].tolist()
+            improve = result[result['判定'].str.contains("要改善", na=False)]['key'].tolist()
             stop = result[result['判定'] == "🛑 停止推奨"]['key'].tolist()
             
             if best:
-                st.success(f"**【予算集中！】** {', '.join(best)} → CPA・接続率・商談化率すべて基準クリア。予算を最大化してください。")
+                st.success(f"**【予算集中！】** {', '.join(best)} → 商談数{meeting_count_min}件以上＋3指標クリア。予算を最大化してください。")
             if good:
-                st.info(f"**【改善余地あり】** {', '.join(good)} → 2つの指標は合格。残り1つを改善すれば最優秀に。")
+                good_filtered = [b for b in good if b not in best]
+                if good_filtered:
+                    st.info(f"**【惜しい！】** {', '.join(good_filtered)} → 3指標達成だが商談数が{meeting_count_min}件未満。継続観察してください。")
             if improve:
-                st.warning(f"**【要分析】** {', '.join(improve)} → 1つだけ基準達成。他の指標を改善できるか検証してください。")
+                st.warning(f"**【要分析】** {', '.join(improve)} → 商談は発生しているが指標が弱い。LP改善や接続体制の見直しを。")
             if stop:
-                st.error(f"**【停止検討】** {', '.join(stop)} → 3指標すべて基準未達。予算を優秀バナーに振り替えてください。")
+                st.error(f"**【停止検討】** {', '.join(stop)} → 商談が発生していないか、全指標未達。予算を優秀バナーに振り替えてください。")
 
         except Exception as e:
             st.error(f"処理エラー: {e}")
