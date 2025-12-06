@@ -4,7 +4,7 @@ import altair as alt
 from datetime import datetime, timedelta
 
 # --- ページ設定 ---
-st.set_page_config(page_title="まごころサポート分析 v8", layout="wide")
+st.set_page_config(page_title="まごころサポート分析 v9", layout="wide")
 st.title("📊 まごころサポート：広告×商談 分析ダッシュボード")
 
 # --- データ読み込み関数 ---
@@ -182,7 +182,7 @@ if meta_file and hs_file:
                 axis=1
             )
 
-            # === 6. 判定ロジック（商談化率重視版） ===
+            # === 6. 判定ロジック ===
             def judge(row):
                 cpa_ok = row['CPA'] > 0 and row['CPA'] <= cpa_limit
                 connect_ok = row['接続率'] >= connect_target
@@ -190,7 +190,6 @@ if meta_file and hs_file:
                 
                 conditions_met = sum([cpa_ok, connect_ok, meeting_ok])
                 
-                # 商談化率が目標以上なら最優秀の可能性あり
                 if conditions_met == 3:
                     return "🏆 最優秀"
                 elif conditions_met == 2 and meeting_ok:
@@ -204,7 +203,7 @@ if meta_file and hs_file:
             
             result['判定'] = result.apply(judge, axis=1)
 
-            # === 7. 全体サマリー ===
+            # === 7. 全体サマリー（改善版） ===
             total_spend = result[spend_col].sum()
             total_leads = result['リード数'].sum()
             total_connect = result['接続数'].sum()
@@ -215,15 +214,58 @@ if meta_file and hs_file:
             avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
 
             st.subheader("📈 全体実績サマリー")
-            k1, k2, k3 = st.columns(3)
-            k1.metric("総消化金額", f"¥{int(total_spend):,}")
-            k1.metric("総リード数", f"{int(total_leads)}件")
-            
-            k2.metric("接続数", f"{int(total_connect)}件", delta=f"{avg_connect:.1f}%")
-            k2.metric("平均CPA", f"¥{avg_cpa:,}")
-            
-            k3.metric("商談実施数", f"{int(total_deal)}件")
-            k3.metric("商談予約数", f"{int(total_plan)}件", delta=f"化率{avg_meeting:.1f}%")
+
+            cols = st.columns(6)
+
+            with cols[0]:
+                st.markdown("""
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>総消化金額</p>
+                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>¥{:,}</p>
+                </div>
+                """.format(int(total_spend)), unsafe_allow_html=True)
+
+            with cols[1]:
+                st.markdown("""
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>総リード数</p>
+                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
+                </div>
+                """.format(int(total_leads)), unsafe_allow_html=True)
+
+            with cols[2]:
+                st.markdown("""
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>接続数</p>
+                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
+                    <p style='margin: 4px 0 0 0; font-size: 0.8rem; color: #28a745;'>接続率 {:.1f}%</p>
+                </div>
+                """.format(int(total_connect), avg_connect), unsafe_allow_html=True)
+
+            with cols[3]:
+                st.markdown("""
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>平均CPA</p>
+                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>¥{:,}</p>
+                </div>
+                """.format(avg_cpa), unsafe_allow_html=True)
+
+            with cols[4]:
+                st.markdown("""
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>商談実施数</p>
+                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
+                </div>
+                """.format(int(total_deal)), unsafe_allow_html=True)
+
+            with cols[5]:
+                st.markdown("""
+                <div style='border: 1px solid #ddd; border-radius: 8px; padding: 12px; background-color: #f8f9fa;'>
+                    <p style='margin: 0; font-size: 0.85rem; color: #666;'>商談予約数</p>
+                    <p style='margin: 4px 0 0 0; font-size: 1.3rem; font-weight: bold;'>{}件</p>
+                    <p style='margin: 4px 0 0 0; font-size: 0.8rem; color: #28a745;'>商談化率 {:.1f}%</p>
+                </div>
+                """.format(int(total_plan), avg_meeting), unsafe_allow_html=True)
 
             st.divider()
 
@@ -243,7 +285,7 @@ if meta_file and hs_file:
 
             st.markdown("---")
 
-            # === 9. バナー別評価表（数値表記改善版） ===
+            # === 9. バナー別評価表 ===
             st.subheader("📋 バナー別 評価表")
             
             display_df = result.copy()
@@ -252,18 +294,15 @@ if meta_file and hs_file:
                 spend_col: '消化金額'
             })
             
-            # 数値フォーマット用のカラムを作成
             display_df['消化金額_表示'] = display_df['消化金額'].apply(lambda x: f"{int(x):,}")
             display_df['CPA_表示'] = display_df['CPA'].apply(lambda x: f"{int(x):,}")
             display_df['接続率_表示'] = display_df['接続率'].apply(lambda x: f"{x:.1f}%")
             display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
             
-            # 表示用データフレーム
             show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '商談実施数', '商談予約数']].copy()
             show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']
             show_df = show_df.sort_values(by='商談化率', ascending=False, key=lambda x: display_df['商談化率'])
             
-            # 色付け用に元の判定列を保持
             def highlight_row(row):
                 判定 = row['判定']
                 if 判定 == "🏆 最優秀":
