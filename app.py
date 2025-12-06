@@ -14,9 +14,9 @@ try:
     with col_logo:
         st.image(logo, width=150)
     with col_title:
-        st.markdown("<h1 style='margin-top: 20px;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='margin-top: 20px;'>Meta広告×セールス チェックボード</h1>", unsafe_allow_html=True)
 except:
-    st.title("Meta広告×セールスダッシュボード")
+    st.title("Meta広告×セールス チェックボード")
 
 st.markdown("---")
 
