@@ -174,9 +174,12 @@ if meta_file and hs_file:
                 hs_summary['商談実施数'] = 0
                 hs_summary['商談予約数'] = 0
             
-            # 法人数
+            # 法人数（「法人」のみ、「法人_社員」は除外）
             if attr_col:
-                corp_df = df_hs[df_hs[attr_col].fillna('').astype(str).str.contains('法人', case=False, na=False)]
+                corp_df = df_hs[
+                    (df_hs[attr_col].fillna('').astype(str).str.contains('法人', case=False, na=False)) &
+                    (~df_hs[attr_col].fillna('').astype(str).str.contains('社員', case=False, na=False))
+                ]
                 corp_count = corp_df.groupby('key').size().reset_index(name='法人数')
                 hs_summary = pd.merge(hs_summary, corp_count, on='key', how='left')
                 st.sidebar.write(f"法人数: {len(corp_df)}件")
@@ -233,90 +236,90 @@ if meta_file and hs_file:
             result['判定'] = result.apply(judge, axis=1)
 
             # === 7. 全体サマリー（レイアウト最適化版） ===
-total_spend = result[spend_col].sum()
-total_leads = result['リード数'].sum()
-total_connect = result['接続数'].sum()
-total_deal = result['商談実施数'].sum()
-total_plan = result['商談予約数'].sum()
-total_corp = result['法人数'].sum()
-avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
-avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
-avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
-avg_corp = (total_corp / total_leads * 100) if total_leads > 0 else 0
+            total_spend = result[spend_col].sum()
+            total_leads = result['リード数'].sum()
+            total_connect = result['接続数'].sum()
+            total_deal = result['商談実施数'].sum()
+            total_plan = result['商談予約数'].sum()
+            total_corp = result['法人数'].sum()
+            avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
+            avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
+            avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
+            avg_corp = (total_corp / total_leads * 100) if total_leads > 0 else 0
 
-st.subheader("全体実績サマリー")
+            st.subheader("全体実績サマリー")
 
-# 1行目（4列）
-cols_row1 = st.columns([1, 1, 1, 1])
+            # 1行目（4列）
+            cols_row1 = st.columns([1, 1, 1, 1])
 
-with cols_row1[0]:
-    st.markdown(f"""
-    <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
-        <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>総消化金額</div>
-        <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>¥{int(total_spend):,}</div>
-    </div>
-    """, unsafe_allow_html=True)
+            with cols_row1[0]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>総消化金額</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>¥{int(total_spend):,}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-with cols_row1[1]:
-    st.markdown(f"""
-    <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
-        <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>総リード数</div>
-        <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>{int(total_leads)}件</div>
-    </div>
-    """, unsafe_allow_html=True)
+            with cols_row1[1]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>総リード数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>{int(total_leads)}件</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-with cols_row1[2]:
-    st.markdown(f"""
-    <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
-        <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>接続数</div>
-        <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_connect)}件</div>
-        <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>接続率 {avg_connect:.1f}%</div>
-    </div>
-    """, unsafe_allow_html=True)
+            with cols_row1[2]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>接続数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_connect)}件</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>接続率 {avg_connect:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-with cols_row1[3]:
-    st.markdown(f"""
-    <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
-        <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>平均CPA</div>
-        <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>¥{avg_cpa:,}</div>
-    </div>
-    """, unsafe_allow_html=True)
+            with cols_row1[3]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>平均CPA</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>¥{avg_cpa:,}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-# 2行目（3列 + 空白1列）
-cols_row2 = st.columns([1, 1, 1, 1])
+            # 2行目（3列 + 空白1列）
+            cols_row2 = st.columns([1, 1, 1, 1])
 
-with cols_row2[0]:
-    st.markdown(f"""
-    <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
-        <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>商談実施数</div>
-        <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>{int(total_deal)}件</div>
-    </div>
-    """, unsafe_allow_html=True)
+            with cols_row2[0]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>商談実施数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>{int(total_deal)}件</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-with cols_row2[1]:
-    st.markdown(f"""
-    <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
-        <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>商談予約数</div>
-        <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_plan)}件</div>
-        <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>商談化率 {avg_meeting:.1f}%</div>
-    </div>
-    """, unsafe_allow_html=True)
+            with cols_row2[1]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>商談予約数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_plan)}件</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>商談化率 {avg_meeting:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-with cols_row2[2]:
-    st.markdown(f"""
-    <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
-        <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>法人数</div>
-        <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_corp)}件</div>
-        <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>法人化率 {avg_corp:.1f}%</div>
-    </div>
-    """, unsafe_allow_html=True)
+            with cols_row2[2]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>法人数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_corp)}件</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>法人化率 {avg_corp:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-with cols_row2[3]:
-    st.markdown("""
-    <div style='height: 140px;'></div>
-    """, unsafe_allow_html=True)
+            with cols_row2[3]:
+                st.markdown("""
+                <div style='height: 140px;'></div>
+                """, unsafe_allow_html=True)
 
-st.markdown("---")
+            st.markdown("---")
 
             # === 8. バナー別評価表 ===
             st.subheader("バナー別 評価表")
