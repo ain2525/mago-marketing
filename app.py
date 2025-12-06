@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+from datetime import datetime, timedelta
 
 # --- ページ設定 ---
-st.set_page_config(page_title="まごころサポート分析 v6", layout="wide")
+st.set_page_config(page_title="まごころサポート分析 v7", layout="wide")
 st.title("📊 まごころサポート：広告×商談 分析ダッシュボード")
 
 # --- データ読み込み関数 ---
@@ -43,24 +44,68 @@ if meta_file and hs_file:
 
     if df_meta is not None and df_hs is not None:
         try:
-            # === Meta側：消化金額の取得用 ===
+            # === Meta側：列の特定 ===
             meta_cols = list(df_meta.columns)
             name_col = next((c for c in meta_cols if '名前' in str(c) or 'Name' in str(c)), None)
-            spend_col = next((c for c in meta_cols if '消化金額' in str(c) or 'Amount' in str(c)), None)
+            spend_col = next((c for c in meta_cols if '消化金額' in str(c) or 'Amount' in str(c) or '費用' in str(c)), None)
+            date_col_meta = next((c for c in meta_cols if '日' in str(c) or 'Date' in str(c) or '開始' in str(c)), None)
 
-            # === HubSpot側：すべての分析基準 ===
+            # === HubSpot側：列の特定 ===
             hs_cols = list(df_hs.columns)
             utm_col = next((c for c in hs_cols if 'UTM' in str(c) or 'Content' in str(c)), None)
             connect_col = next((c for c in hs_cols if '接続' in str(c)), None)
             deal_col = next((c for c in hs_cols if '商談' in str(c)), None)
+            date_col_hs = next((c for c in hs_cols if '作成日' in str(c) or 'Created' in str(c) or '日付' in str(c)), None)
 
             if not all([name_col, spend_col, utm_col]):
-                st.error(f"必要な列が見つかりません。Meta: {name_col}/{spend_col}, HubSpot: {utm_col}")
+                st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
                 st.stop()
 
-            # === デバッグ：商談列の実際の値を表示 ===
+            # === 日付列の変換（存在する場合） ===
+            if date_col_meta:
+                df_meta[date_col_meta] = pd.to_datetime(df_meta[date_col_meta], errors='coerce')
+            if date_col_hs:
+                df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
+
+            # === 期間フィルター（日付列がある場合のみ） ===
+            st.subheader("📅 分析期間の設定")
+            filter_enabled = st.checkbox("期間で絞り込む", value=False)
+            
+            if filter_enabled:
+                col_date1, col_date2 = st.columns(2)
+                with col_date1:
+                    if date_col_hs:
+                        min_date_hs = df_hs[date_col_hs].min()
+                        max_date_hs = df_hs[date_col_hs].max()
+                        start_date = st.date_input("開始日", value=min_date_hs if pd.notna(min_date_hs) else datetime.now() - timedelta(days=30))
+                    else:
+                        start_date = st.date_input("開始日", value=datetime.now() - timedelta(days=30))
+                with col_date2:
+                    if date_col_hs:
+                        end_date = st.date_input("終了日", value=max_date_hs if pd.notna(max_date_hs) else datetime.now())
+                    else:
+                        end_date = st.date_input("終了日", value=datetime.now())
+                
+                # フィルタリング実行
+                start_datetime = pd.to_datetime(start_date)
+                end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+                
+                if date_col_meta:
+                    df_meta = df_meta[(df_meta[date_col_meta] >= start_datetime) & (df_meta[date_col_meta] <= end_datetime)]
+                if date_col_hs:
+                    df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
+                
+                st.info(f"📊 分析期間: {start_date} 〜 {end_date}")
+
+            st.divider()
+
+            # === デバッグ情報 ===
             st.sidebar.markdown("---")
             st.sidebar.subheader("🔍 デバッグ情報")
+            st.sidebar.write(f"**Meta広告データ:** {len(df_meta)}行")
+            st.sidebar.write(f"**HubSpotデータ:** {len(df_hs)}行")
+            st.sidebar.write(f"**消化金額列:** {spend_col}")
+            
             if deal_col:
                 st.sidebar.write(f"**商談列名:** `{deal_col}`")
                 deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
@@ -78,6 +123,11 @@ if meta_file and hs_file:
             # === 2. Meta側の消化金額集計 ===
             meta_spend = df_meta.groupby('key')[spend_col].sum().reset_index()
             meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
+            
+            # デバッグ：Meta側の消化金額を表示
+            st.sidebar.markdown("---")
+            st.sidebar.write("**Meta側 消化金額（バナー別）:**")
+            st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
 
             # === 3. HubSpot側でリード数・接続・商談をカウント ===
             hs_summary = df_hs.groupby('key').agg(
@@ -105,9 +155,8 @@ if meta_file and hs_file:
                 deal_plan = df_hs[df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False)]
                 deal_plan_count = deal_plan.groupby('key').size().reset_index(name='商談予約数')
                 
-                st.sidebar.markdown("---")
-                st.sidebar.write(f"✅ 商談実施としてカウント: **{len(deal_done)}件**")
-                st.sidebar.write(f"📅 商談予約としてカウント: **{len(deal_plan)}件**")
+                st.sidebar.write(f"✅ 商談実施: **{len(deal_done)}件**")
+                st.sidebar.write(f"📅 商談予約: **{len(deal_plan)}件**")
                 
                 hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
                 hs_summary = pd.merge(hs_summary, deal_plan_count, on='key', how='left')
@@ -139,20 +188,17 @@ if meta_file and hs_file:
                 axis=1
             )
 
-            # === 6. 判定ロジック（商談重視版） ===
+            # === 6. 判定ロジック ===
             def judge(row):
                 total_meetings = row['商談実施数'] + row['商談予約数']
                 
-                # 各指標の達成状況
                 cpa_ok = row['CPA'] > 0 and row['CPA'] <= cpa_limit
                 connect_ok = row['接続率'] >= connect_target
                 meeting_ok = row['商談化率'] >= meeting_target
                 meeting_count_ok = total_meetings >= meeting_count_min
                 
-                # 達成数をカウント
                 conditions_met = sum([cpa_ok, connect_ok, meeting_ok])
                 
-                # 判定（商談数を最重視）
                 if conditions_met == 3 and meeting_count_ok:
                     return "🏆 最優秀"
                 elif conditions_met == 3 and total_meetings > 0:
@@ -196,7 +242,6 @@ if meta_file and hs_file:
             # === 8. バナー別パフォーマンス ===
             st.subheader("📊 バナー別 総合評価")
             
-            # 分布図
             chart_data = result[result['リード数'] > 0].copy()
             if len(chart_data) > 0:
                 chart = alt.Chart(chart_data).mark_circle(size=200).encode(
@@ -210,7 +255,6 @@ if meta_file and hs_file:
 
             st.markdown("---")
 
-            # 評価表
             st.subheader("📋 バナー別 評価表")
             
             display_df = result.copy()
@@ -221,7 +265,6 @@ if meta_file and hs_file:
             display_df['接続率'] = display_df['接続率'].round(1)
             display_df['商談化率'] = display_df['商談化率'].round(1)
             
-            # 色付け関数
             def color_judgment(val):
                 if val == "🏆 最優秀":
                     return 'background-color: #d4edda'
@@ -251,15 +294,15 @@ if meta_file and hs_file:
             stop = result[result['判定'] == "🛑 停止推奨"]['key'].tolist()
             
             if best:
-                st.success(f"**【予算集中！】** {', '.join(best)} → 商談数{meeting_count_min}件以上＋3指標クリア。予算を最大化してください。")
+                st.success(f"**【予算集中！】** {', '.join(best)} → 商談数{meeting_count_min}件以上＋3指標クリア。")
             if good:
                 good_filtered = [b for b in good if b not in best]
                 if good_filtered:
-                    st.info(f"**【惜しい！】** {', '.join(good_filtered)} → 3指標達成だが商談数が{meeting_count_min}件未満。継続観察してください。")
+                    st.info(f"**【惜しい！】** {', '.join(good_filtered)} → 3指標達成だが商談数{meeting_count_min}件未満。")
             if improve:
-                st.warning(f"**【要分析】** {', '.join(improve)} → 商談は発生しているが指標が弱い。LP改善や接続体制の見直しを。")
+                st.warning(f"**【要分析】** {', '.join(improve)} → LP改善や接続体制の見直しを。")
             if stop:
-                st.error(f"**【停止検討】** {', '.join(stop)} → 商談が発生していないか、全指標未達。予算を優秀バナーに振り替えてください。")
+                st.error(f"**【停止検討】** {', '.join(stop)} → 予算を優秀バナーに振り替えてください。")
 
         except Exception as e:
             st.error(f"処理エラー: {e}")
