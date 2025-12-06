@@ -57,6 +57,17 @@ if meta_file and hs_file:
                 st.error(f"必要な列が見つかりません。Meta: {name_col}/{spend_col}, HubSpot: {utm_col}")
                 st.stop()
 
+            # === デバッグ：商談列の実際の値を表示 ===
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("🔍 デバッグ情報")
+            if deal_col:
+                st.sidebar.write(f"**商談列名:** `{deal_col}`")
+                deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
+                st.sidebar.write("**商談列の値の分布:**")
+                st.sidebar.dataframe(deal_values, use_container_width=True)
+            else:
+                st.sidebar.warning("⚠️ 商談列が見つかりません")
+
             # === 1. データ結合キーの作成 ===
             df_meta['key'] = df_meta[name_col].astype(str).str.extract(r'(bn\d+)', expand=False)
             df_hs['key'] = df_hs[utm_col].astype(str).str.strip()
@@ -70,19 +81,6 @@ if meta_file and hs_file:
             meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
 
             # === 3. HubSpot側でリード数・接続・商談をカウント ===
-            # === 3. HubSpot側でリード数・接続・商談をカウント === の直後に追加
-
-# ----- デバッグ：実際の値を確認 -----
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔍 デバッグ情報")
-if deal_col:
-    deal_values = df_hs[deal_col].fillna('(空白)').astype(str).value_counts()
-    st.sidebar.write("**商談列の実際の値:**")
-    st.sidebar.dataframe(deal_values)
-else:
-    st.sidebar.warning("商談列が見つかりません")
-# ----- デバッグここまで -----
-
             hs_summary = df_hs.groupby('key').agg(
                 リード数=('key', 'size')
             ).reset_index()
@@ -95,17 +93,27 @@ else:
             else:
                 hs_summary['接続数'] = 0
             
-            # 商談実施数（「あり」のみ）
-            # 商談予約数（「予約」のみ）
-            # 商談分析用（「あり」+「予約」）
+            # 商談実施数・予約数（柔軟な判定）
             if deal_col:
-                # 商談実施（あり）
-                deal_done = df_hs[df_hs[deal_col].fillna('').astype(str).str.contains('あり', case=False, na=False)]
+                # 全ての値を小文字化＆前後の空白除去
+                df_hs['商談_normalized'] = df_hs[deal_col].fillna('').astype(str).str.lower().str.strip()
+                
+                # 商談実施（「あり」「済」「完了」「実施」「done」「yes」「true」などを含む）
+                # ただし「予約」は除外
+                deal_done = df_hs[
+                    (df_hs['商談_normalized'].str.contains('あり|済|完了|実施|done|yes|true', case=False, na=False)) &
+                    (~df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False))
+                ]
                 deal_done_count = deal_done.groupby('key').size().reset_index(name='商談実施数')
                 
-                # 商談予約（予約）
-                deal_plan = df_hs[df_hs[deal_col].fillna('').astype(str).str.contains('予約', case=False, na=False)]
+                # 商談予約（「予約」「予定」「scheduled」などを含む）
+                deal_plan = df_hs[df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False)]
                 deal_plan_count = deal_plan.groupby('key').size().reset_index(name='商談予約数')
+                
+                # デバッグ：カウント結果を表示
+                st.sidebar.markdown("---")
+                st.sidebar.write(f"✅ 商談実施としてカウント: **{len(deal_done)}件**")
+                st.sidebar.write(f"📅 商談予約としてカウント: **{len(deal_plan)}件**")
                 
                 # 結合
                 hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
