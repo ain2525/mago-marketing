@@ -3,7 +3,7 @@ import pandas as pd
 import altair as alt
 
 # --- ページ設定 ---
-st.set_page_config(page_title="まごころサポート分析 v4", layout="wide")
+st.set_page_config(page_title="まごころサポート分析 v5", layout="wide")
 st.title("📊 まごころサポート：広告×商談 分析ダッシュボード")
 
 # --- データ読み込み関数 ---
@@ -51,10 +51,7 @@ if meta_file and hs_file:
             hs_cols = list(df_hs.columns)
             utm_col = next((c for c in hs_cols if 'UTM' in str(c) or 'Content' in str(c)), None)
             connect_col = next((c for c in hs_cols if '接続' in str(c)), None)
-            deal_col = next((c for c in hs_cols if '商談' in str(c) and '予定' not in str(c)), None)
-            deal_plan_col = next((c for c in hs_cols if '商談' in str(c) and '予定' in str(c)), None)
-            attr_col = next((c for c in hs_cols if '属性' in str(c)), None)
-            stage_col = next((c for c in hs_cols if 'ステージ' in str(c) or 'Stage' in str(c)), None)
+            deal_col = next((c for c in hs_cols if '商談' in str(c)), None)
 
             if not all([name_col, spend_col, utm_col]):
                 st.error(f"必要な列が見つかりません。Meta: {name_col}/{spend_col}, HubSpot: {utm_col}")
@@ -77,7 +74,7 @@ if meta_file and hs_file:
                 リード数=('key', 'size')
             ).reset_index()
 
-            # 接続数（「接続」列が「あり」「TRUE」などの場合）
+            # 接続数
             if connect_col:
                 connect_df = df_hs[df_hs[connect_col].fillna('').astype(str).str.contains('あり|TRUE|Yes|true|済', case=False, na=False)]
                 connect_count = connect_df.groupby('key').size().reset_index(name='接続数')
@@ -85,20 +82,23 @@ if meta_file and hs_file:
             else:
                 hs_summary['接続数'] = 0
             
-            # 商談実施数
+            # 商談実施数（「あり」のみ）
+            # 商談予約数（「予約」のみ）
+            # 商談分析用（「あり」+「予約」）
             if deal_col:
-                deal_df = df_hs[df_hs[deal_col].fillna('').astype(str).str.contains('あり|TRUE|Yes|true|済', case=False, na=False)]
-                deal_count = deal_df.groupby('key').size().reset_index(name='商談実施数')
-                hs_summary = pd.merge(hs_summary, deal_count, on='key', how='left')
+                # 商談実施（あり）
+                deal_done = df_hs[df_hs[deal_col].fillna('').astype(str).str.contains('あり', case=False, na=False)]
+                deal_done_count = deal_done.groupby('key').size().reset_index(name='商談実施数')
+                
+                # 商談予約（予約）
+                deal_plan = df_hs[df_hs[deal_col].fillna('').astype(str).str.contains('予約', case=False, na=False)]
+                deal_plan_count = deal_plan.groupby('key').size().reset_index(name='商談予約数')
+                
+                # 結合
+                hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
+                hs_summary = pd.merge(hs_summary, deal_plan_count, on='key', how='left')
             else:
                 hs_summary['商談実施数'] = 0
-
-            # 商談予約数
-            if deal_plan_col:
-                plan_df = df_hs[df_hs[deal_plan_col].fillna('').astype(str).str.contains('あり|TRUE|Yes|true|済|予定', case=False, na=False)]
-                plan_count = plan_df.groupby('key').size().reset_index(name='商談予約数')
-                hs_summary = pd.merge(hs_summary, plan_count, on='key', how='left')
-            else:
                 hs_summary['商談予約数'] = 0
 
             # 欠損値を0埋め
@@ -120,6 +120,7 @@ if meta_file and hs_file:
                 lambda x: (x['接続数'] / x['リード数'] * 100) if x['リード数'] > 0 else 0,
                 axis=1
             )
+            # 商談化率は「実施+予約」で計算
             result['商談化率'] = result.apply(
                 lambda x: ((x['商談実施数'] + x['商談予約数']) / x['リード数'] * 100) if x['リード数'] > 0 else 0,
                 axis=1
@@ -169,71 +170,56 @@ if meta_file and hs_file:
 
             st.divider()
 
-            # === 8. タブ表示 ===
-            tab1, tab2 = st.tabs(["📊 バナー別パフォーマンス", "📋 リード詳細リスト"])
+            # === 8. バナー別パフォーマンス ===
+            st.subheader("📊 バナー別 総合評価")
+            
+            # 分布図
+            chart_data = result[result['リード数'] > 0].copy()
+            if len(chart_data) > 0:
+                chart = alt.Chart(chart_data).mark_circle(size=200).encode(
+                    x=alt.X('CPA:Q', title='CPA (円)', scale=alt.Scale(zero=False)),
+                    y=alt.Y('商談化率:Q', title='商談化率 (%)'),
+                    color=alt.Color('判定:N', legend=alt.Legend(title="判定"), scale=alt.Scale(
+                        domain=['🏆 最優秀', '🥇 優秀', '🟡 要改善', '🛑 停止推奨'],
+                        range=['#28a745', '#17a2b8', '#ffc107', '#dc3545']
+                    )),
+                    size=alt.Size('リード数:Q', legend=None),
+                    tooltip=['key', 'CPA', '接続率', '商談化率', 'リード数', '判定']
+                ).properties(height=400).interactive()
+                st.altair_chart(chart, use_container_width=True)
 
-            with tab1:
-                st.subheader("バナー別 総合評価")
-                
-                # グラフ
-                chart_data = result[result['リード数'] > 0].copy()
-                if len(chart_data) > 0:
-                    chart = alt.Chart(chart_data).mark_circle(size=200).encode(
-                        x=alt.X('CPA:Q', title='CPA (円)', scale=alt.Scale(zero=False)),
-                        y=alt.Y('商談化率:Q', title='商談化率 (%)'),
-                        color=alt.Color('判定:N', legend=alt.Legend(title="判定")),
-                        size=alt.Size('リード数:Q', legend=None),
-                        tooltip=['key', 'CPA', '接続率', '商談化率', 'リード数', '判定']
-                    ).properties(height=400).interactive()
-                    st.altair_chart(chart, use_container_width=True)
+            st.markdown("---")
 
-                # テーブル
-                display_df = result.copy()
-                display_df = display_df.rename(columns={
-                    'key': 'バナーID',
-                    spend_col: '消化金額'
-                })
-                display_df['接続率'] = display_df['接続率'].round(1)
-                display_df['商談化率'] = display_df['商談化率'].round(1)
-                
-                st.dataframe(
-                    display_df[['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']].sort_values('消化金額', ascending=False),
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-            with tab2:
-                st.subheader("リード属性・質の詳細")
-                
-                detail_df = df_hs.copy()
-                detail_df = pd.merge(detail_df, result[['key', '判定', 'CPA']], on='key', how='left')
-                
-                cols_to_show = ['key', '判定', 'CPA']
-                rename_dict = {'key': 'バナー'}
-                
-                target_cols = {
-                    '属性': attr_col,
-                    '接続': connect_col,
-                    '商談': deal_col,
-                    '商談予定': deal_plan_col,
-                    'ステージ': stage_col
-                }
-                
-                for label, col in target_cols.items():
-                    if col and col in detail_df.columns:
-                        cols_to_show.append(col)
-                        rename_dict[col] = label
-                
-                if len(detail_df) > 0:
-                    filter_banner = st.multiselect("バナーで絞り込む", options=sorted(detail_df['key'].unique().tolist()))
-                    if filter_banner:
-                        detail_df = detail_df[detail_df['key'].isin(filter_banner)]
-
-                    st.dataframe(
-                        detail_df[cols_to_show].rename(columns=rename_dict).fillna('-'),
-                        use_container_width=True,
-                        hide_index=True
-                    )
+            # 評価表
+            st.subheader("📋 バナー別 評価表")
+            
+            display_df = result.copy()
+            display_df = display_df.rename(columns={
+                'key': 'バナーID',
+                spend_col: '消化金額'
+            })
+            display_df['接続率'] = display_df['接続率'].round(1)
+            display_df['商談化率'] = display_df['商談化率'].round(1)
+            
+            # 色付け関数
+            def color_judgment(val):
+                if val == "🏆 最優秀":
+                    return 'background-color: #d4edda'
+                elif val == "🥇 優秀":
+                    return 'background-color: #d1ecf1'
+                elif val == "🟡 要改善":
+                    return 'background-color: #fff3cd'
+                elif val == "🛑 停止推奨":
+                    return 'background-color: #f8d7da'
+                return ''
+            
+            styled_df = display_df[['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '商談実施数', '商談予約数']].sort_values('消化金額', ascending=False)
+            
+            st.dataframe(
+                styled_df.style.applymap(color_judgment, subset=['判定']),
+                use_container_width=True,
+                hide_index=True
+            )
 
             # === 9. AIアクション提案 ===
             st.divider()
@@ -241,14 +227,17 @@ if meta_file and hs_file:
             
             best = result[result['判定'] == "🏆 最優秀"]['key'].tolist()
             good = result[result['判定'] == "🥇 優秀"]['key'].tolist()
+            improve = result[result['判定'] == "🟡 要改善"]['key'].tolist()
             stop = result[result['判定'] == "🛑 停止推奨"]['key'].tolist()
             
             if best:
                 st.success(f"**【予算集中！】** {', '.join(best)} → CPA・接続率・商談化率すべて基準クリア。予算を最大化してください。")
             if good:
                 st.info(f"**【改善余地あり】** {', '.join(good)} → 2つの指標は合格。残り1つを改善すれば最優秀に。")
+            if improve:
+                st.warning(f"**【要分析】** {', '.join(improve)} → 1つだけ基準達成。他の指標を改善できるか検証してください。")
             if stop:
-                st.warning(f"**【停止検討】** {', '.join(stop)} → 3指標すべて基準未達。予算を優秀バナーに振り替えてください。")
+                st.error(f"**【停止検討】** {', '.join(stop)} → 3指標すべて基準未達。予算を優秀バナーに振り替えてください。")
 
         except Exception as e:
             st.error(f"処理エラー: {e}")
