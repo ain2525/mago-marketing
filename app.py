@@ -129,17 +129,43 @@ if meta_file and hs_file:
 
     if df_meta is not None and df_hs is not None:
         try:
-            # === Meta側：列の特定 ===
+            # === Meta側：列の特定（デイリーデータ対応版）===
             meta_cols = list(df_meta.columns)
-            name_col = next((c for c in meta_cols if '名前' in str(c) or 'Name' in str(c)), None)
-            spend_col = next((c for c in meta_cols if '消化金額' in str(c) or 'Amount' in str(c) or '費用' in str(c)), None)
-            date_col_meta = next((c for c in meta_cols if '日' in str(c) or 'Date' in str(c) or '開始' in str(c)), None)
+            
+            # 広告名の列を検索（デイリーデータ対応）
+            name_col = next((c for c in meta_cols if 
+                             '広告の名前' in str(c) or
+                             '広告名' in str(c) or 
+                             '名前' in str(c) or 
+                             'Name' in str(c)), None)
+            
+            # 消化金額の列を検索（デイリーデータ対応）
+            spend_col = next((c for c in meta_cols if 
+                              '消化金額' in str(c) or 
+                              'Amount' in str(c) or 
+                              '費用' in str(c) or
+                              'Spent' in str(c)), None)
+            
+            # 日付列の検索（デイリーデータ対応）
+            date_col_meta = next((c for c in meta_cols if 
+                                  'レポート開始日' in str(c) or
+                                  '開始日' in str(c) or
+                                  '日' in str(c) or 
+                                  'Date' in str(c)), None)
 
             # === HubSpot側：列の特定 ===
             hs_cols = list(df_hs.columns)
             utm_col = next((c for c in hs_cols if 'UTM' in str(c) or 'Content' in str(c)), None)
             attr_col = next((c for c in hs_cols if '属性' in str(c)), None)
             date_col_hs = next((c for c in hs_cols if '作成日' in str(c) or 'Created' in str(c) or '日付' in str(c)), None)
+
+            # === デバッグ：検出された列名を表示 ===
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("🔍 検出された列")
+            st.sidebar.write(f"広告名: `{name_col}`")
+            st.sidebar.write(f"消化金額: `{spend_col}`")
+            st.sidebar.write(f"Meta日付: `{date_col_meta}`")
+            st.sidebar.write(f"UTM: `{utm_col}`")
 
             if not all([name_col, spend_col, utm_col]):
                 st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
