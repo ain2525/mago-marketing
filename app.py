@@ -396,7 +396,7 @@ if meta_file and hs_file:
             result['商談化率'] = result.apply(
                 lambda x: ((x['商談実施数'] + x['商談予約数']) / x['リード数'] * 100) if x['リード数'] > 0 else 0, axis=1
             )
-            result['法人化率'] = result.apply(
+            result['法人率'] = result.apply(
                 lambda x: (x['法人数'] / x['リード数'] * 100) if x['リード数'] > 0 else 0, axis=1
             )
 
@@ -489,7 +489,7 @@ if meta_file and hs_file:
                 <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
                     <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>法人数</div>
                     <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_corp)}件</div>
-                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>法人化率 {avg_corp:.1f}%</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>法人率 {avg_corp:.1f}%</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -527,10 +527,10 @@ if meta_file and hs_file:
             display_df['CPA_表示'] = display_df['CPA'].apply(lambda x: f"{int(x):,}")
             display_df['接続率_表示'] = display_df['接続率'].apply(lambda x: f"{x:.1f}%")
             display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
-            display_df['法人化率_表示'] = display_df['法人化率'].apply(lambda x: f"{x:.1f}%")
+            display_df['法人率_表示'] = display_df['法人率'].apply(lambda x: f"{x:.1f}%")
 
-            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人化率_表示', '商談実施数', '商談予約数', '法人数']].copy()
-            show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人化率', '商談実施数', '商談予約数', '法人数']
+            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人率_表示', '商談実施数', '商談予約数', '法人数']].copy()
+            show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人率', '商談実施数', '商談予約数', '法人数']
             show_df = show_df.sort_values(by='商談化率', ascending=False, key=lambda x: display_df['商談化率'])
 
             def highlight_row(row):
@@ -600,7 +600,7 @@ if meta_file and hs_file:
                         range=['#28a745', '#17a2b8', '#ffc107', '#dc3545']
                     )),
                     size=alt.Size('リード数:Q', legend=None),
-                    tooltip=['key', 'CPA', '接続率', '商談化率', '法人化率', 'リード数', '判定']
+                    tooltip=['key', 'CPA', '接続率', '商談化率', '法人率', 'リード数', '判定']
                 ).properties(height=450).interactive()
                 st.altair_chart(chart, use_container_width=True)
 
