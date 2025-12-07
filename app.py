@@ -15,7 +15,7 @@ from PIL import Image
 # 【組み込み済み】提供されたスプレッドシートURL
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1dJwYYK-koOgU0V9z83hfz-Wjjjl_UNbl_N6eHQk5OmI/edit"
 # 【設定】書き込み先のシートインデックス (1: 2枚目のシートを意味)
-KPI_SHEET_INDEX = 1
+KPI_SHEET_INDEX = 0
 
 def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
     """
