@@ -12,7 +12,7 @@ from PIL import Image
 # 【１】設定とスプレッドシート書き込み関数
 # =========================================================================
 
-# 【設定】提供されたスプレッドシートURL
+# 【組み込み済み】提供されたスプレッドシートURL
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1dJwYYK-koOgU0V9z83hfz-Wjjjl_UNbl_N6eHQk5OmI/edit"
 # 【設定】書き込み先のシートインデックス (1: 2枚目のシート。1枚目なら0)
 KPI_SHEET_INDEX = 1 
@@ -57,8 +57,7 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
         
     except Exception as e:
         status_container.error(f"❌ 書き込み失敗。エラー: {e}")
-        # 詳細ログはサイドバーのデバッグ情報に出力
-        # st.code(f"書き込みエラー詳細: {e}") 
+
 
 # =========================================================================
 # 【２】アプリのメイン処理（既存コードの統合）
@@ -142,14 +141,10 @@ if meta_file and hs_file:
                 st.stop()
 
             # === 日付列の変換 & 期間フィルター & デバッグ情報 === 
-            # (省略: 既存の期間フィルターとデバッグ表示ロジック)
-            # 簡潔さのため、ここでは既存のコードをそのまま維持します
-            
-            # --- 既存の期間フィルターロジックの開始 ---
+            # (期間フィルターロジックは完全維持)
             filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
             
             if filter_enabled:
-                # 日付処理の複雑なロジックは省略せずに維持
                 if date_col_hs:
                     min_date_hs = df_hs[date_col_hs].min()
                     max_date_hs = df_hs[date_col_hs].max()
@@ -262,12 +257,12 @@ if meta_file and hs_file:
             result[spend_col] = result[spend_col].fillna(0)
 
             # === 5. 指標計算 ===
-            total_spend = result[spend_col].sum() # 全体サマリー KPI用
-            total_leads = result['リード数'].sum() # 全体サマリー KPI用
-            total_connect = result['接続数'].sum() # 全体サマリー KPI用
-            total_deal = result['商談実施数'].sum() # 全体サマリー KPI用
-            total_plan = result['商談予約数'].sum() # 全体サマリー KPI用
-            total_corp = result['法人数'].sum() # 全体サマリー KPI用
+            total_spend = result[spend_col].sum()
+            total_leads = result['リード数'].sum()
+            total_connect = result['接続数'].sum()
+            total_deal = result['商談実施数'].sum()
+            total_plan = result['商談予約数'].sum()
+            total_corp = result['法人数'].sum()
 
             result['CPA'] = result.apply(
                 lambda x: int(x[spend_col] / x['リード数']) if x['リード数'] > 0 else 0, axis=1
@@ -304,7 +299,6 @@ if meta_file and hs_file:
             result['判定'] = result.apply(judge, axis=1)
 
             # === 7. 全体サマリー KPI計算 ===
-            # (全体サマリー表示用のKPIを再計算 - 既存の表示ロジックで使用)
             avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
             avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
             avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
@@ -312,13 +306,80 @@ if meta_file and hs_file:
 
             st.subheader("全体実績サマリー")
 
-            # --- 既存のHTML表示ロジック (省略) ---
+            # --- 既存のHTML表示ロジック ---
             cols_row1 = st.columns([1, 1, 1, 1])
-            # ... HTML表示ロジックは完全維持 ...
 
-            # --- ここから書き込みトリガー ---
+            with cols_row1[0]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>総消化金額</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>¥{int(total_spend):,}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row1[1]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>総リード数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>{int(total_leads)}件</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row1[2]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>接続数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_connect)}件</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>接続率 {avg_connect:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row1[3]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 16px;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>平均CPA</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>¥{avg_cpa:,}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # ... (2行目のHTML表示ロジック) ...
+            cols_row2 = st.columns([1, 1, 1, 1])
+
+            with cols_row2[0]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 12px;'>商談実施数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2;'>{int(total_deal)}件</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row2[1]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>商談予約数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_plan)}件</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>商談化率 {avg_meeting:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row2[2]:
+                st.markdown(f"""
+                <div style='background-color: rgb(64, 180, 200); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>法人数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_corp)}件</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>法人化率 {avg_corp:.1f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with cols_row2[3]:
+                st.markdown("""
+                <div style='height: 140px;'></div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("---")
             
-            # === 10. KPIを辞書にまとめる ===
+            # --- 【重要】反映ボタンの設置 ---
+            # KPIを辞書にまとめる
             summary_data = {
                 'ファイル名': meta_file.name + ' & ' + hs_file.name,
                 '総リード数': total_leads,
@@ -326,19 +387,90 @@ if meta_file and hs_file:
                 '総消化金額': int(total_spend),
                 '商談化率': avg_meeting
             }
-            
-            st.markdown("---")
-            
-            # === 11. 反映ボタンの設置 ===
+
             if st.button("✅ KPI分析結果をスプレッドシートに反映！", help="このボタンで分析結果が全員共有のスプレッドシートに記録されます。"):
                 write_analysis_to_sheet(summary_data, SPREADSHEET_URL, KPI_SHEET_INDEX)
             
+            st.markdown("---")
             # --- ここまで書き込みトリガー ---
 
-            # === 8. バナー別評価表 === (以下、省略せずに既存コードを維持)
+
+            # === 8. バナー別評価表 === 
             st.subheader("バナー別 評価表")
             
-            # ... (既存の評価表表示ロジックを完全維持) ...
+            display_df = result.copy()
+            display_df = display_df.rename(columns={
+                'key': 'バナーID',
+                spend_col: '消化金額'
+            })
+            
+            display_df['消化金額_表示'] = display_df['消化金額'].apply(lambda x: f"{int(x):,}")
+            display_df['CPA_表示'] = display_df['CPA'].apply(lambda x: f"{int(x):,}")
+            display_df['接続率_表示'] = display_df['接続率'].apply(lambda x: f"{x:.1f}%")
+            display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
+            display_df['法人化率_表示'] = display_df['法人化率'].apply(lambda x: f"{x:.1f}%")
+            
+            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人化率_表示', '商談実施数', '商談予約数', '法人数']].copy()
+            show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人化率', '商談実施数', '商談予約数', '法人数']
+            show_df = show_df.sort_values(by='商談化率', ascending=False, key=lambda x: display_df['商談化率'])
+            
+            def highlight_row(row):
+                判定 = row['判定']
+                if 判定 == "最優秀":
+                    color = 'background-color: #d4edda'
+                elif "優秀" in 判定:
+                    color = 'background-color: #d1ecf1'
+                elif "要改善" in 判定:
+                    color = 'background-color: #fff3cd'
+                elif "停止" in 判定:
+                    color = 'background-color: #f8d7da'
+                else:
+                    color = ''
+                return [color] * len(row)
+            
+            st.dataframe(
+                show_df.style.apply(highlight_row, axis=1),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # === 9. アクション提案 ===
+            st.markdown("---")
+            st.subheader("推奨アクション")
+            
+            best = result[result['判定'] == "最優秀"]['key'].tolist()
+            good = result[result['判定'].str.contains("優秀", na=False)]['key'].tolist()
+            improve = result[result['判定'].str.contains("要改善", na=False)]['key'].tolist()
+            stop = result[result['判定'] == "停止推奨"]['key'].tolist()
+            
+            if best:
+                st.success(f"【予算集中】 {', '.join(best)} → CPA・接続率・商談化率すべて基準クリア")
+            if good:
+                good_filtered = [b for b in good if b not in best]
+                if good_filtered:
+                    st.info(f"【有望株】 {', '.join(good_filtered)} → 商談化率は目標達成。CPA or 接続率を改善すれば最優秀に")
+            if improve:
+                st.warning(f"【要分析】 {', '.join(improve)} → LP改善や接続体制の見直しを検討")
+            if stop:
+                st.error(f"【停止検討】 {', '.join(stop)} → 予算を優秀バナーに振り替え")
+
+            # === 10. 分布図 ===
+            st.markdown("---")
+            st.subheader("バナー別 パフォーマンス分布")
+            
+            chart_data = result[result['リード数'] > 0].copy()
+            if len(chart_data) > 0:
+                chart = alt.Chart(chart_data).mark_circle(size=200).encode(
+                    x=alt.X('CPA:Q', title='CPA (円)', scale=alt.Scale(zero=False)),
+                    y=alt.Y('商談化率:Q', title='商談化率 (%)'),
+                    color=alt.Color('判定:N', legend=alt.Legend(title="判定"), scale=alt.Scale(
+                        domain=['最優秀', '優秀', '要改善', '停止推奨'],
+                        range=['#28a745', '#17a2b8', '#ffc107', '#dc3545']
+                    )),
+                    size=alt.Size('リード数:Q', legend=None),
+                    tooltip=['key', 'CPA', '接続率', '商談化率', '法人化率', 'リード数', '判定']
+                ).properties(height=450).interactive()
+                st.altair_chart(chart, use_container_width=True)
 
         except Exception as e:
             st.error(f"処理エラー: {e}")
