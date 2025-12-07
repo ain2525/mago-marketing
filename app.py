@@ -3,23 +3,34 @@ import pandas as pd
 import altair as alt
 from datetime import datetime, timedelta
 from PIL import Image
+import requests
+from io import BytesIO
 
 # --- ページ設定 ---
-st.set_page_config(page_title="Meta広告×セールス チェックボード", layout="wide")
+st.set_page_config(page_title="Meta広告×セールスダッシュボード", layout="wide")
 
 # --- ロゴ表示 ---
 try:
-    logo = Image.open("/mnt/user-data/uploads/FCロコ_白抜き-1-04.png")
+    # Google DriveのファイルIDを抽出
+    file_id = "17hgbiZqkovPnEiv0zUBOTgj34n2lBO1O"
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    
+    # 画像をダウンロード
+    response = requests.get(download_url)
+    logo = Image.open(BytesIO(response.content))
+    
     col_logo, col_title = st.columns([1, 4])
     with col_logo:
         st.image(logo, width=150)
     with col_title:
-        st.markdown("<h1 style='margin-top: 20px;'>Meta広告×セールス チェックボード</h1>", unsafe_allow_html=True)
-except:
-    st.title("Meta広告×セールス チェックボード")
+        st.markdown("<h1 style='margin-top: 20px;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
+except Exception as e:
+    st.title("Meta広告×セールスダッシュボード")
+    st.sidebar.warning(f"ロゴ読み込みエラー: {e}")
 
 st.markdown("---")
 
+# 以下、前回のコードと同じ
 # --- データ読み込み関数 ---
 def load_data(file):
     try:
@@ -34,6 +45,7 @@ def load_data(file):
         st.error(f"ファイル読み込みエラー: {e}")
         return None
 
+# ... (以降は前回のコードと同じ)
 # --- サイドバー設定 ---
 st.sidebar.header("判定基準の設定")
 cpa_limit = st.sidebar.number_input("許容CPA（円）", value=10000, step=1000)
