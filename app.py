@@ -14,7 +14,7 @@ from PIL import Image
 
 # 【組み込み済み】提供されたスプレッドシートURL
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1dJwYYK-koOgU0V9z83hfz-Wjjjl_UNbl_N6eHQk5OmI/edit"
-# 【設定】書き込み先のシートインデックス (1: 2枚目のシート。1枚目なら0)
+# 【設定】書き込み先のシートインデックス (1: 2枚目のシートを意味)
 KPI_SHEET_INDEX = 1 
 
 def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
@@ -26,7 +26,6 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
     status_container.info("スプレッドシートへの接続準備中...")
     
     try:
-        # 認証処理（GitHub Secretsから認証情報を取得）
         creds_json = os.environ.get("GOOGLE_SHEETS_CREDENTIALS")
         if not creds_json:
             status_container.error("❌ 認証情報が見つかりません。GitHub Secretsを確認してください。")
@@ -37,11 +36,9 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         client = gspread.authorize(creds)
         
-        # スプレッドシートを開く
         workbook = client.open_by_url(spreadsheet_url)
         sheet = workbook.get_worksheet(sheet_index) 
 
-        # データをリスト形式に整形 (ヘッダー順: 記録日時, ファイル名, 総リード数, 平均CPA, 総消化金額, 商談化率)
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         data_to_write = [
             now,
@@ -70,7 +67,6 @@ st.set_page_config(page_title="Meta広告×セールスダッシュボード", l
 try:
     logo = Image.open("logo.png")
     
-    # 中央揃えレイアウト
     st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -139,9 +135,15 @@ if meta_file and hs_file:
             if not all([name_col, spend_col, utm_col]):
                 st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
                 st.stop()
+            
+            # ★修正箇所：日付列の変換処理を統合前の正しい位置に戻します
+            # === 日付列の変換 ===
+            if date_col_meta:
+                df_meta[date_col_meta] = pd.to_datetime(df_meta[date_col_meta], errors='coerce')
+            if date_col_hs:
+                df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 日付列の変換 & 期間フィルター & デバッグ情報 === 
-            # (期間フィルターロジックは完全維持)
+            # === 期間フィルター ===
             filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
             
             if filter_enabled:
@@ -181,7 +183,6 @@ if meta_file and hs_file:
                 attr_values = df_hs[attr_col].fillna('(空白)').astype(str).value_counts()
                 st.sidebar.write("属性列の値:")
                 st.sidebar.dataframe(attr_values, use_container_width=True)
-            # --- 既存の期間フィルターロジックの終了 ---
 
 
             # === 1. データ結合キーの作成 ===
@@ -378,7 +379,8 @@ if meta_file and hs_file:
 
             st.markdown("---")
             
-            # --- 【重要】反映ボタンの設置 ---
+            # --- 【重要】反映ボタンの設置 (表示ロジックの後に配置) ---
+            
             # KPIを辞書にまとめる
             summary_data = {
                 'ファイル名': meta_file.name + ' & ' + hs_file.name,
