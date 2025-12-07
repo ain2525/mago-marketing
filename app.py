@@ -110,6 +110,9 @@ cpa_limit = st.sidebar.number_input("許容CPA（円）", value=10000, step=1000
 connect_target = st.sidebar.slider("目標接続率（%）", 0, 100, 50)
 meeting_target = st.sidebar.slider("目標商談化率（%）", 0, 50, 18)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("分析期間の設定")
+
 # --- ファイルアップロード ---
 col1, col2 = st.columns(2)
 with col1:
@@ -156,14 +159,6 @@ if meta_file and hs_file:
             attr_col = next((c for c in hs_cols if '属性' in str(c)), None)
             date_col_hs = next((c for c in hs_cols if '作成日' in str(c) or 'Created' in str(c) or '日付' in str(c)), None)
 
-            # === デバッグ：検出された列名を表示 ===
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("🔍 検出された列")
-            st.sidebar.write(f"広告名: `{name_col}`")
-            st.sidebar.write(f"消化金額: `{spend_col}`")
-            st.sidebar.write(f"Meta日付: `{date_col_meta}`")
-            st.sidebar.write(f"UTM: `{utm_col}`")
-
             if not all([name_col, spend_col, utm_col]):
                 st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
                 st.stop()
@@ -174,9 +169,7 @@ if meta_file and hs_file:
             if date_col_hs:
                 df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 分析期間の設定 ===
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("分析期間の設定")
+            # === 🆕 期間フィルター（プリセット追加） ===
             filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
 
             if filter_enabled:
@@ -227,6 +220,14 @@ if meta_file and hs_file:
                 if date_col_hs:
                     df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
 
+            # === デバッグ：検出された列名を表示 ===
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("🔍 検出された列")
+            st.sidebar.write(f"広告名: `{name_col}`")
+            st.sidebar.write(f"消化金額: `{spend_col}`")
+            st.sidebar.write(f"Meta日付: `{date_col_meta}`")
+            st.sidebar.write(f"UTM: `{utm_col}`")
+
             # === デバッグ情報 ===
             st.sidebar.markdown("---")
             st.sidebar.subheader("デバッグ情報")
@@ -237,21 +238,46 @@ if meta_file and hs_file:
             df_meta['key'] = df_meta[name_col].astype(str).str.extract(r'(bn\d+)', expand=False)
             df_hs['key'] = df_hs[utm_col].astype(str).str.strip()
 
+            # デバッグ：キー抽出前後の行数
+            st.sidebar.write(f"Meta（キー抽出前）: {len(df_meta)}行")
+            st.sidebar.write(f"HubSpot（キー抽出前）: {len(df_hs)}行")
+            
             df_meta = df_meta[df_meta['key'].notna()]
             df_hs = df_hs[df_hs['key'].notna()]
+            
+            st.sidebar.write(f"Meta（キー抽出後）: {len(df_meta)}行")
+            st.sidebar.write(f"HubSpot（キー抽出後）: {len(df_hs)}行")
+            
+            # デバッグ：抽出されたキーの一覧
+            st.sidebar.write("抽出されたバナーID:")
+            st.sidebar.write(sorted(df_meta['key'].unique()))
+            
+            # デバッグ：Meta広告データのサンプル表示
+            st.sidebar.write("Meta広告データ（最初の3行）:")
+            st.sidebar.dataframe(df_meta[[name_col, spend_col, 'key']].head(3))
 
             # === 2. Meta側の消化金額集計 ===
             meta_spend = df_meta.groupby('key')[spend_col].sum().reset_index()
             meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
 
             st.sidebar.markdown("---")
-            st.sidebar.write("Meta消化金額（バナー別）:")
+            st.sidebar.write("📊 Meta消化金額（バナー別）:")
             st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
+            
+            # デバッグ：Meta側の合計
+            total_meta_spend = meta_spend[spend_col].sum()
+            st.sidebar.write(f"Meta消化金額合計: ¥{int(total_meta_spend):,}")
 
             # === 3. HubSpot側でリード数・接続・商談・法人をカウント ===
             hs_summary = df_hs.groupby('key').agg(
                 リード数=('key', 'size')
             ).reset_index()
+            
+            # デバッグ：HubSpot側のリード数合計
+            st.sidebar.markdown("---")
+            st.sidebar.write("📊 HubSpotリード数（バナー別）:")
+            st.sidebar.dataframe(hs_summary, use_container_width=True)
+            st.sidebar.write(f"HubSpotリード数合計: {hs_summary['リード数'].sum()}件")
 
             # 🔄 接続数（新ルール：「コールの成果」が「あり」）
             call_result_col = next((c for c in hs_cols if 'コールの成果' in str(c) or ('コール' in str(c) and '成果' in str(c))), None)
