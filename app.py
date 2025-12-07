@@ -12,10 +12,13 @@ try:
     logo = Image.open("logo.png")
     
     # 中央揃えレイアウト
+    st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image(logo, use_column_width=True)
-        st.markdown("<h1 style='text-align: center; margin-top: 10px; white-space: nowrap;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.markdown("<h1 style='text-align: center; margin-top: 20px;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
 except:
     st.markdown("<h1 style='text-align: center;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
 
