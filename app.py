@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import os # ★追加: Secrets読み込み用
-import json # ★追加: Secrets読み込み用
-import gspread # ★追加: Google Sheetsアクセス用
-from google.oauth2.service_account import Credentials # ★追加: 認証用
+import os 
+import json 
+import gspread 
+from google.oauth2.service_account import Credentials 
 from datetime import datetime, timedelta
 from PIL import Image
 
@@ -26,15 +26,8 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
     status_container.info("スプレッドシートへの接続準備中...")
     
     try:
-        creds_json = os.environ.get("GOOGLE_SHEETS_CREDENTIALS")
-        if not creds_json:
-            status_container.error("❌ 認証情報が見つかりません。GitHub Secretsを確認してください。")
-            return
-
-        creds_dict = json.loads(creds_json)
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        client = gspread.authorize(creds)
+        # ★【修正箇所】Streamlitの推奨方式で認証情報を取得 (secrets.tomlを参照)
+        client = gspread.service_account_from_dict(st.secrets["google_sheets"])
         
         workbook = client.open_by_url(spreadsheet_url)
         sheet = workbook.get_worksheet(sheet_index) 
@@ -53,6 +46,7 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
         status_container.success("✅ 分析結果をKPIサマリーシートに反映しました！")
         
     except Exception as e:
+        # 認証情報が見つからないエラーはここで表示されます
         status_container.error(f"❌ 書き込み失敗。エラー: {e}")
 
 
@@ -136,8 +130,8 @@ if meta_file and hs_file:
                 st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
                 st.stop()
             
-            # ★修正箇所：日付列の変換処理を統合前の正しい位置に戻します
             # === 日付列の変換 ===
+            # ★エラー修正済みの正しい位置
             if date_col_meta:
                 df_meta[date_col_meta] = pd.to_datetime(df_meta[date_col_meta], errors='coerce')
             if date_col_hs:
