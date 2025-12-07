@@ -229,51 +229,72 @@ if meta_file and hs_file:
             st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
 
             # === 3. HubSpot側でリード数・接続・商談・法人をカウント ===
-            hs_summary = df_hs.groupby('key').agg(
-                リード数=('key', 'size')
-            ).reset_index()
+hs_summary = df_hs.groupby('key').agg(
+    リード数=('key', 'size')
+).reset_index()
 
-            # 接続数
-            if connect_col:
-                connect_df = df_hs[df_hs[connect_col].fillna('').astype(str).str.contains('あり|TRUE|Yes|true|済', case=False, na=False)]
-                connect_count = connect_df.groupby('key').size().reset_index(name='接続数')
-                hs_summary = pd.merge(hs_summary, connect_count, on='key', how='left')
-            else:
-                hs_summary['接続数'] = 0
+# 🔄 接続数（新ルール：「コールの成果」が「あり」）
+call_result_col = next((c for c in hs_cols if 'コールの成果' in str(c) or 'コール' in str(c) and '成果' in str(c)), None)
+if call_result_col:
+    connect_df = df_hs[df_hs[call_result_col].fillna('').astype(str).str.contains('あり', case=False, na=False)]
+    connect_count = connect_df.groupby('key').size().reset_index(name='接続数')
+    hs_summary = pd.merge(hs_summary, connect_count, on='key', how='left')
+    st.sidebar.write(f"接続列: `{call_result_col}` → {len(connect_df)}件")
+else:
+    hs_summary['接続数'] = 0
+    st.sidebar.warning("⚠️ 「コールの成果」列が見つかりません")
 
-            # 商談実施数・予約数
-            if deal_col:
-                df_hs['商談_normalized'] = df_hs[deal_col].fillna('').astype(str).str.lower().str.strip()
+# 🔄 商談実施数（新ルール：「初回商談日」または「再商談日」に日付あり）
+first_meeting_col = next((c for c in hs_cols if '初回商談日' in str(c) or '初回' in str(c) and '商談' in str(c)), None)
+second_meeting_col = next((c for c in hs_cols if '再商談日' in str(c) or '再商談' in str(c)), None)
 
-                deal_done = df_hs[
-                    (df_hs['商談_normalized'].str.contains('あり|済|完了|実施|done|yes|true', case=False, na=False)) &
-                    (~df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False))
-                ]
-                deal_done_count = deal_done.groupby('key').size().reset_index(name='商談実施数')
+deal_done_df = pd.DataFrame()
 
-                deal_plan = df_hs[df_hs['商談_normalized'].str.contains('予約|予定|scheduled', case=False, na=False)]
-                deal_plan_count = deal_plan.groupby('key').size().reset_index(name='商談予約数')
+if first_meeting_col:
+    # 初回商談日に日付がある行を抽出
+    df_hs[first_meeting_col] = pd.to_datetime(df_hs[first_meeting_col], errors='coerce')
+    first_deal = df_hs[df_hs[first_meeting_col].notna()][['key']].copy()
+    deal_done_df = pd.concat([deal_done_df, first_deal])
+    st.sidebar.write(f"初回商談日あり: {df_hs[first_meeting_col].notna().sum()}件")
 
-                st.sidebar.write(f"商談実施: {len(deal_done)}件")
-                st.sidebar.write(f"商談予約: {len(deal_plan)}件")
+if second_meeting_col:
+    # 再商談日に日付がある行を抽出
+    df_hs[second_meeting_col] = pd.to_datetime(df_hs[second_meeting_col], errors='coerce')
+    second_deal = df_hs[df_hs[second_meeting_col].notna()][['key']].copy()
+    deal_done_df = pd.concat([deal_done_df, second_deal])
+    st.sidebar.write(f"再商談日あり: {df_hs[second_meeting_col].notna().sum()}件")
 
-                hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
-                hs_summary = pd.merge(hs_summary, deal_plan_count, on='key', how='left')
-            else:
-                hs_summary['商談実施数'] = 0
-                hs_summary['商談予約数'] = 0
+if len(deal_done_df) > 0:
+    # 重複を除いてカウント（同じリードが初回も再商談も持っている場合）
+    deal_done_count = deal_done_df.groupby('key').size().reset_index(name='商談実施数')
+    hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
+    st.sidebar.write(f"✅ 商談実施数（重複除外）: {len(deal_done_df.drop_duplicates())}件")
+else:
+    hs_summary['商談実施数'] = 0
+    st.sidebar.warning("⚠️ 商談日付列が見つかりません")
 
-            # 法人数
-            if attr_col:
-                corp_df = df_hs[
-                    (df_hs[attr_col].fillna('').astype(str).str.contains('法人', case=False, na=False)) &
-                    (~df_hs[attr_col].fillna('').astype(str).str.contains('社員', case=False, na=False))
-                ]
-                corp_count = corp_df.groupby('key').size().reset_index(name='法人数')
-                hs_summary = pd.merge(hs_summary, corp_count, on='key', how='left')
-                st.sidebar.write(f"法人数: {len(corp_df)}件")
-            else:
-                hs_summary['法人数'] = 0
+# 🔄 商談予約数（新ルール：「取引ステージ」が「商談予定」）
+stage_col = next((c for c in hs_cols if '取引ステージ' in str(c) or 'ステージ' in str(c)), None)
+if stage_col:
+    deal_plan_df = df_hs[df_hs[stage_col].fillna('').astype(str).str.contains('商談予定', case=False, na=False)]
+    deal_plan_count = deal_plan_df.groupby('key').size().reset_index(name='商談予約数')
+    hs_summary = pd.merge(hs_summary, deal_plan_count, on='key', how='left')
+    st.sidebar.write(f"商談予約: {len(deal_plan_df)}件")
+else:
+    hs_summary['商談予約数'] = 0
+    st.sidebar.warning("⚠️ 「取引ステージ」列が見つかりません")
+
+# 法人数（変更なし）
+if attr_col:
+    corp_df = df_hs[
+        (df_hs[attr_col].fillna('').astype(str).str.contains('法人', case=False, na=False)) &
+        (~df_hs[attr_col].fillna('').astype(str).str.contains('社員', case=False, na=False))
+    ]
+    corp_count = corp_df.groupby('key').size().reset_index(name='法人数')
+    hs_summary = pd.merge(hs_summary, corp_count, on='key', how='left')
+    st.sidebar.write(f"法人数: {len(corp_df)}件")
+else:
+    hs_summary['法人数'] = 0
 
             hs_summary = hs_summary.fillna(0)
             hs_summary['接続数'] = hs_summary['接続数'].astype(int)
