@@ -26,12 +26,28 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
     status_container.info("スプレッドシートへの接続準備中...")
 
     try:
-        # Streamlit Secrets から取得した JSON文字列 → dict に変換してから使用
-        service_account_info = json.loads(st.secrets["google_sheets"])
-        client = gspread.service_account_from_dict(service_account_info)
+        # st.secrets["google_sheets"] をそのまま dict として使う
+        client = gspread.service_account_from_dict(st.secrets["google_sheets"])
 
         workbook = client.open_by_url(spreadsheet_url)
         sheet = workbook.get_worksheet(sheet_index)
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        data_to_write = [
+            now,
+            analysis_data.get('ファイル名', 'N/A'),
+            analysis_data.get('総リード数', 'N/A'),
+            analysis_data.get('平均CPA', 'N/A'),
+            analysis_data.get('総消化金額', 'N/A'),
+            analysis_data.get('商談化率', 'N/A')
+        ]
+
+        sheet.append_row(data_to_write)
+        status_container.success("✅ 分析結果をKPIサマリーシートに反映しました！")
+
+    except Exception as e:
+        status_container.error(f"❌ 書き込み失敗。エラー: {e}")
+
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         data_to_write = [
