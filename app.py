@@ -251,6 +251,29 @@ if meta_file and hs_file:
                 hs_summary['商談予約数'] = 0
                 st.sidebar.warning("⚠️ 「取引ステージ」列が見つかりません")
 
+            # 🆕 進捗ステータス別カウント
+            if stage_col:
+                # ステータスのマッピング定義
+                status_mapping = {
+                    '新規リード': ['新規リード'],
+                    '進捗中': ['FS対応中：社内検討', 'FS対応中：検討', 'FS対応中：見込み', 'FS対応中：申込'],
+                    '商談予定': ['商談予定'],
+                    'ナーチャリング': ['ナーチャリング'],
+                    '保留・NG': ['低温リスト', '完全NG', 'NG対象'],
+                    '契約': ['規約完了']
+                }
+                
+                # 各ステータスごとにカウント
+                for status_name, keywords in status_mapping.items():
+                    pattern = '|'.join(keywords)
+                    status_df = df_hs[df_hs[stage_col].fillna('').astype(str).str.contains(pattern, case=False, na=False)]
+                    status_count = status_df.groupby('key').size().reset_index(name=status_name)
+                    hs_summary = pd.merge(hs_summary, status_count, on='key', how='left')
+                    st.sidebar.write(f"{status_name}: {len(status_df)}件")
+            else:
+                for status_name in ['新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']:
+                    hs_summary[status_name] = 0
+
             # 法人数（変更なし）
             if attr_col:
                 corp_df = df_hs[
@@ -268,6 +291,10 @@ if meta_file and hs_file:
             hs_summary['商談実施数'] = hs_summary['商談実施数'].astype(int)
             hs_summary['商談予約数'] = hs_summary['商談予約数'].astype(int)
             hs_summary['法人数'] = hs_summary['法人数'].astype(int)
+            
+            # 進捗ステータスもint型に変換
+            for status_name in ['新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']:
+                hs_summary[status_name] = hs_summary[status_name].astype(int)
 
             # === 4. Meta消化金額と結合 ===
             result = pd.merge(hs_summary, meta_spend, on='key', how='left')
@@ -443,6 +470,19 @@ if meta_file and hs_file:
 
             st.dataframe(
                 show_df.style.apply(highlight_row, axis=1),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # === 🆕 バナー別進捗状況テーブル ===
+            st.markdown("---")
+            st.subheader("バナー別 進捗状況")
+
+            progress_df = display_df[['バナーID', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']].copy()
+            progress_df = progress_df.sort_values(by='バナーID')
+
+            st.dataframe(
+                progress_df,
                 use_container_width=True,
                 hide_index=True
             )
