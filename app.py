@@ -10,13 +10,14 @@ st.set_page_config(page_title="Meta広告×セールスダッシュボード", l
 # --- ロゴ表示 ---
 try:
     logo = Image.open("logo.png")
-    col_logo, col_title = st.columns([1, 4])
-    with col_logo:
-        st.image(logo, width=150)
-    with col_title:
-        st.markdown("<h1 style='margin-top: 20px;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
+    
+    # 中央揃えレイアウト
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image(logo, use_column_width=True)
+        st.markdown("<h1 style='text-align: center; margin-top: 10px;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
 except:
-    st.title("Meta広告×セールスダッシュボード")
+    st.markdown("<h1 style='text-align: center;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
 
 st.markdown("---")
 
