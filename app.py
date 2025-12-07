@@ -33,16 +33,42 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
         sheet = workbook.get_worksheet(sheet_index)
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        data_to_write = [
+        def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
+    """
+    計算されたKPI分析結果をGoogleスプレッドシートに書き込む関数
+    """
+
+    status_container = st.sidebar.empty()
+    status_container.info("スプレッドシートへの接続準備中...")
+
+    try:
+        # st.secrets["google_sheets"] をそのまま dict として使う
+        client = gspread.service_account_from_dict(st.secrets["google_sheets"])
+
+        workbook = client.open_by_url(spreadsheet_url)
+        sheet = workbook.get_worksheet(sheet_index)
+
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+        # ここで一度リストを作る
+        raw_data = [
             now,
             analysis_data.get('ファイル名', 'N/A'),
             analysis_data.get('総リード数', 'N/A'),
             analysis_data.get('平均CPA', 'N/A'),
             analysis_data.get('総消化金額', 'N/A'),
-            analysis_data.get('商談化率', 'N/A')
+            analysis_data.get('商談化率', 'N/A'),
         ]
 
+        # gspread が扱えるように、全部 str にしてしまう
+        data_to_write = [str(v) for v in raw_data]
+
         sheet.append_row(data_to_write)
+        status_container.success("✅ 分析結果をKPIサマリーシートに反映しました！")
+
+    except Exception as e:
+        status_container.error(f"❌ 書き込み失敗。エラー: {e}")
+
         status_container.success("✅ 分析結果をKPIサマリーシートに反映しました！")
 
     except Exception as e:
