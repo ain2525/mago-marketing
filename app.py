@@ -151,19 +151,49 @@ if meta_file and hs_file:
             if date_col_hs:
                 df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 期間フィルター ===
+            # === 🆕 期間フィルター（プリセット追加） ===
             filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
 
             if filter_enabled:
-                if date_col_hs:
-                    min_date_hs = df_hs[date_col_hs].min()
-                    max_date_hs = df_hs[date_col_hs].max()
-                    start_date = st.sidebar.date_input("開始日", value=min_date_hs if pd.notna(min_date_hs) else datetime.now() - timedelta(days=30))
-                    end_date = st.sidebar.date_input("終了日", value=max_date_hs if pd.notna(max_date_hs) else datetime.now())
-                else:
-                    start_date = st.sidebar.date_input("開始日", value=datetime.now() - timedelta(days=30))
-                    end_date = st.sidebar.date_input("終了日", value=datetime.now())
+                # プリセット選択
+                period_preset = st.sidebar.radio(
+                    "期間を選択",
+                    options=["今月", "先月", "カスタム"],
+                    index=2
+                )
+                
+                # 現在の日時を取得
+                now = datetime.now()
+                
+                if period_preset == "今月":
+                    # 今月の1日から今日まで
+                    start_date = datetime(now.year, now.month, 1).date()
+                    end_date = now.date()
+                    st.sidebar.info(f"📅 今月: {start_date} ~ {end_date}")
+                    
+                elif period_preset == "先月":
+                    # 先月の1日から最終日まで
+                    first_day_this_month = datetime(now.year, now.month, 1)
+                    last_day_last_month = first_day_this_month - timedelta(days=1)
+                    first_day_last_month = datetime(last_day_last_month.year, last_day_last_month.month, 1)
+                    
+                    start_date = first_day_last_month.date()
+                    end_date = last_day_last_month.date()
+                    st.sidebar.info(f"📅 先月: {start_date} ~ {end_date}")
+                    
+                else:  # カスタム
+                    if date_col_hs:
+                        min_date_hs = df_hs[date_col_hs].min()
+                        max_date_hs = df_hs[date_col_hs].max()
+                        start_date = st.sidebar.date_input("開始日", value=min_date_hs if pd.notna(min_date_hs) else datetime.now() - timedelta(days=30))
+                        end_date = st.sidebar.date_input("終了日", value=max_date_hs if pd.notna(max_date_hs) else datetime.now())
+                    else:
+                        start_date = st.sidebar.date_input("開始日", value=datetime.now() - timedelta(days=30))
+                        end_date = st.sidebar.date_input("終了日", value=datetime.now())
+                    
+                    st.sidebar.info(f"📅 カスタム: {start_date} ~ {end_date}")
 
+                # 日付フィルターの適用
                 start_datetime = pd.to_datetime(start_date)
                 end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
 
@@ -171,8 +201,6 @@ if meta_file and hs_file:
                     df_meta = df_meta[(df_meta[date_col_meta] >= start_datetime) & (df_meta[date_col_meta] <= end_datetime)]
                 if date_col_hs:
                     df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
-
-                st.sidebar.info(f"{start_date} ~ {end_date}")
 
             # === デバッグ情報 ===
             st.sidebar.markdown("---")
