@@ -22,7 +22,7 @@ def main():
     # 3. スプレッドシートを開く
     # 1dJwYYK-koOgU0V9z83hfz-Wjjjl_UNbl_N6eHQk5OmI
     # 例: https://docs.google.com/spreadsheets/d/abc1234567/edit
-    spreadsheet_url = "1dJwYYK-koOgU0V9z83hfz-Wjjjl_UNbl_N6eHQk5OmI" 
+    spreadsheet_url = "https://docs.google.com/spreadsheets/d/1dJwYYK-koOgU0V9z83hfz-Wjjjl_UNbl_N6eHQk5OmI/edit?gid=0#gid=0" 
     
     try:
         workbook = client.open_by_url(spreadsheet_url)
