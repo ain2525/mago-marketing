@@ -26,7 +26,7 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
     status_container.info("スプレッドシートへの接続準備中...")
     
     try:
-        # ★【修正】Streamlitの推奨方式で認証情報を取得 (secrets.tomlのgoogle_sheetsセクションを参照)
+        # ★認証修正: Streamlitの推奨方式 (secrets.tomlを参照)
         client = gspread.service_account_from_dict(st.secrets["google_sheets"])
         
         workbook = client.open_by_url(spreadsheet_url)
@@ -46,11 +46,12 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
         status_container.success("✅ 分析結果をKPIサマリーシートに反映しました！")
         
     except Exception as e:
+        # 認証情報が見つからないエラーはここで表示されます
         status_container.error(f"❌ 書き込み失敗。エラー: {e}")
 
 
 # =========================================================================
-# 【２】アプリのメイン処理（既存コードの統合）
+# 【２】アプリのメイン処理
 # =========================================================================
 
 # --- ページ設定 ---
@@ -129,6 +130,7 @@ if meta_file and hs_file:
                 st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
                 st.stop()
             
+            # ★エラー修正済みの正しい位置: 日付変換処理の復元
             # === 日付列の変換 ===
             if date_col_meta:
                 df_meta[date_col_meta] = pd.to_datetime(df_meta[date_col_meta], errors='coerce')
