@@ -565,7 +565,7 @@ if meta_file and hs_file:
             st.markdown("---")
             st.subheader("バナー別 進捗状況")
 
-            progress_df = display_df[['バナーID', '接続数', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']].copy()
+            progress_df = display_df[['バナーID', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']].copy()
             progress_df['バナーID_num'] = progress_df['バナーID'].str.extract('(\d+)').astype(int)
             progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
             progress_df = progress_df.drop(columns=['バナーID_num'])
