@@ -514,84 +514,69 @@ if meta_file and hs_file:
 
             st.markdown("---")
 
-          # === 8. バナー別評価表 ===
-st.subheader("バナー別 評価表")
+            # === 8. バナー別評価表 ===
+            st.subheader("バナー別 評価表")
 
-display_df = result.copy()
-display_df = display_df.rename(columns={
-    'key': 'バナーID',
-    spend_col: '消化金額'
-})
+            display_df = result.copy()
+            display_df = display_df.rename(columns={
+                'key': 'バナーID',
+                spend_col: '消化金額'
+            })
 
-display_df['消化金額_表示'] = display_df['消化金額'].apply(lambda x: f"{int(x):,}")
-display_df['CPA_表示'] = display_df['CPA'].apply(lambda x: f"{int(x):,}")
-display_df['接続率_表示'] = display_df['接続率'].apply(lambda x: f"{x:.1f}%")
-display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
-display_df['法人率_表示'] = display_df['法人率'].apply(lambda x: f"{x:.1f}%")
+            display_df['消化金額_表示'] = display_df['消化金額'].apply(lambda x: f"{int(x):,}")
+            display_df['CPA_表示'] = display_df['CPA'].apply(lambda x: f"{int(x):,}")
+            display_df['接続率_表示'] = display_df['接続率'].apply(lambda x: f"{x:.1f}%")
+            display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
+            display_df['法人率_表示'] = display_df['法人率'].apply(lambda x: f"{x:.1f}%")
 
-show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人率_表示', '接続数', '商談実施数', '商談予約数', '法人数']].copy()
-show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人率', '接続数', '商談実施数', '商談予約数', '法人数']
+            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人率_表示', '接続数', '商談実施数', '商談予約数', '法人数']].copy()
+            show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人率', '接続数', '商談実施数', '商談予約数', '法人数']
 
-# 判定の優劣でソートするための辞書
-judgment_order = {"最優秀": 0, "優秀": 1, "要改善": 2, "停止推奨": 3}
+            # 判定の優劣でソートするための辞書
+            judgment_order = {"最優秀": 0, "優秀": 1, "要改善": 2, "停止推奨": 3}
 
-show_df['判定_rank'] = show_df['判定'].map(judgment_order)
-show_df['バナーID_num'] = show_df['バナーID'].str.extract('(\d+)').astype(int)
+            show_df['判定_rank'] = show_df['判定'].map(judgment_order)
+            show_df['バナーID_num'] = show_df['バナーID'].str.extract('(\d+)').astype(int)
 
-show_df = show_df.sort_values(by=['判定_rank', 'バナーID_num'], ascending=[True, False])
-show_df = show_df.drop(columns=['判定_rank', 'バナーID_num'])
+            show_df = show_df.sort_values(by=['判定_rank', 'バナーID_num'], ascending=[True, False])
+            show_df = show_df.drop(columns=['判定_rank', 'バナーID_num'])
 
-def highlight_row(row):
-    判定 = row['判定']
-    if 判定 == "最優秀":
-        color = 'background-color: #d4edda'
-    elif "優秀" in 判定:
-        color = 'background-color: #d1ecf1'
-    elif "要改善" in 判定:
-        color = 'background-color: #fff3cd'
-    elif "停止" in 判定:
-        color = 'background-color: #f8d7da'
-    else:
-        color = ''
-    return [color] * len(row)
+            def highlight_row(row):
+                判定 = row['判定']
+                if 判定 == "最優秀":
+                    color = 'background-color: #d4edda'
+                elif "優秀" in 判定:
+                    color = 'background-color: #d1ecf1'
+                elif "要改善" in 判定:
+                    color = 'background-color: #fff3cd'
+                elif "停止" in 判定:
+                    color = 'background-color: #f8d7da'
+                else:
+                    color = ''
+                return [color] * len(row)
 
-st.dataframe(
-    show_df.style.apply(highlight_row, axis=1),
-    use_container_width=True,
-    hide_index=True
-)
+            st.dataframe(
+                show_df.style.apply(highlight_row, axis=1),
+                use_container_width=True,
+                hide_index=True
+            )
 
-# === 🆕 バナー別進捗状況テーブル ===
-st.markdown("---")
-st.subheader("バナー別 進捗状況")
+            # === 9. バナー別進捗状況テーブル ===
+            st.markdown("---")
+            st.subheader("バナー別 進捗状況")
 
-progress_df = display_df[['バナーID', '接続数', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']].copy()
-progress_df['バナーID_num'] = progress_df['バナーID'].str.extract('(\d+)').astype(int)
-progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
-progress_df = progress_df.drop(columns=['バナーID_num'])
+            progress_df = display_df[['バナーID', '接続数', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']].copy()
+            progress_df['バナーID_num'] = progress_df['バナーID'].str.extract('(\d+)').astype(int)
+            progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
+            progress_df = progress_df.drop(columns=['バナーID_num'])
 
-st.dataframe(
-    progress_df, 
-    use_container_width=True,
-    hide_index=True
-)
+            st.dataframe(
+                progress_df, 
+                use_container_width=True,
+                hide_index=True
+            )
 
-# === 🆕 バナー別進捗状況テーブル ===
-st.markdown("---")
-st.subheader("バナー別 進捗状況")
-
-progress_df = display_df[['バナーID', '接続数', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']].copy()
-progress_df['バナーID_num'] = progress_df['バナーID'].str.extract('(\d+)').astype(int)
-progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
-progress_df = progress_df.drop(columns=['バナーID_num'])
-
-st.dataframe(
-    progress_df, 
-    use_container_width=True,
-    hide_index=True
-)
-
-            # === 9. アクション提案 ===
+            # === 10. アクション提案 ===
             st.markdown("---")
             st.subheader("推奨アクション")
 
@@ -611,7 +596,7 @@ st.dataframe(
             if stop:
                 st.error(f"【停止検討】 {', '.join(stop)} → 予算を優秀バナーに振り替え")
 
-            # === 10. 分布図 ===
+            # === 11. 分布図 ===
             st.markdown("---")
             st.subheader("バナー別 パフォーマンス分布")
 
