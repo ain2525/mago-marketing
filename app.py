@@ -25,11 +25,13 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
     status_container = st.sidebar.empty() 
     status_container.info("スプレッドシートへの接続準備中...")
     
-    try:
+        try:
         # ★認証修正: Streamlitの推奨方式 (secrets.tomlを参照)
-        client = gspread.service_account_from_dict(st.secrets["google_sheets"])
+        service_account_info = json.loads(st.secrets["google_sheets"])
+        client = gspread.service_account_from_dict(service_account_info)
         
         workbook = client.open_by_url(spreadsheet_url)
+
         sheet = workbook.get_worksheet(sheet_index) 
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
