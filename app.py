@@ -110,9 +110,6 @@ cpa_limit = st.sidebar.number_input("許容CPA（円）", value=10000, step=1000
 connect_target = st.sidebar.slider("目標接続率（%）", 0, 100, 50)
 meeting_target = st.sidebar.slider("目標商談化率（%）", 0, 50, 18)
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("分析期間の設定")
-
 # --- ファイルアップロード ---
 col1, col2 = st.columns(2)
 with col1:
@@ -177,7 +174,9 @@ if meta_file and hs_file:
             if date_col_hs:
                 df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 🆕 期間フィルター（プリセット追加） ===
+            # === 分析期間の設定 ===
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("分析期間の設定")
             filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
 
             if filter_enabled:
