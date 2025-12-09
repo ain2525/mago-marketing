@@ -206,9 +206,13 @@ if meta_file and hs_file:
                 end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
 
                 if date_col_meta:
+                    before_count = len(df_meta)
                     df_meta = df_meta[(df_meta[date_col_meta] >= start_datetime) & (df_meta[date_col_meta] <= end_datetime)]
+                    st.sidebar.write(f"Meta: {before_count}行 → {len(df_meta)}行")
                 if date_col_hs:
+                    before_count = len(df_hs)
                     df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
+                    st.sidebar.write(f"HubSpot: {before_count}行 → {len(df_hs)}行")
 
             st.sidebar.markdown("---")
             st.sidebar.subheader("デバッグ情報")
@@ -342,8 +346,9 @@ if meta_file and hs_file:
                 hs_summary[status_name] = hs_summary[status_name].astype(int)
 
             # === 4. Meta消化金額と結合 ===
-            result = pd.merge(hs_summary, meta_spend, on='key', how='left')
+            result = pd.merge(hs_summary, meta_spend, on='key', how='outer')
             result[spend_col] = result[spend_col].fillna(0)
+            result['リード数'] = result['リード数'].fillna(0).astype(int)
 
             # === 5. 指標計算 ===
             total_spend = result[spend_col].sum()
