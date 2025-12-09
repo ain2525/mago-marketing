@@ -349,6 +349,11 @@ if meta_file and hs_file:
             result = pd.merge(hs_summary, meta_spend, on='key', how='outer')
             result[spend_col] = result[spend_col].fillna(0)
             result['リード数'] = result['リード数'].fillna(0).astype(int)
+            
+            # 進捗ステータス列もNaNを0で埋める
+            for col in ['接続数', '商談実施数', '商談予約数', '法人数', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']:
+                if col in result.columns:
+                    result[col] = result[col].fillna(0).astype(int)
 
             # === 5. 指標計算 ===
             total_spend = result[spend_col].sum()
@@ -538,8 +543,8 @@ if meta_file and hs_file:
             progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
             progress_df = progress_df.drop(columns=['バナーID_num'])
 
-            # 0を空白に置換
-            progress_df_display = progress_df.replace(0, '')
+            # NaNを0に変換してから、0を空白に置換
+            progress_df_display = progress_df.fillna(0).replace(0, '').replace(0.0, '')
 
             st.dataframe(
                 progress_df_display, 
