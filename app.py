@@ -538,8 +538,11 @@ if meta_file and hs_file:
             progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
             progress_df = progress_df.drop(columns=['バナーID_num'])
 
+            # 0を空白に置換
+            progress_df_display = progress_df.replace(0, '')
+
             st.dataframe(
-                progress_df, 
+                progress_df_display, 
                 use_container_width=True,
                 hide_index=True
             )
