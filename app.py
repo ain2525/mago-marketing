@@ -119,12 +119,12 @@ if meta_file and hs_file:
             meta_cols = list(df_meta.columns)
             hs_cols = list(df_hs.columns)
             
-            # === Meta側：列の特定 ===
-            name_col = next((c for c in meta_cols if '広告の名前' in str(c)), None)
-            if name_col is None:
-                name_col = next((c for c in meta_cols if '広告名' in str(c) or '広告セット名' in str(c) or 'キャンペーン名' in str(c)), None)
-            if name_col is None:
-                name_col = next((c for c in meta_cols if '名前' in str(c) or 'Name' in str(c)), None)
+            # === Meta側：列の特定（優先順位：広告の名前 > 広告名 > 広告セット名 > キャンペーン名）===
+            name_col = None
+            for pattern in ['広告の名前', '広告名', '広告セット名', 'キャンペーン名', 'Ad name', 'Ad set name', 'Campaign name', '名前', 'Name']:
+                name_col = next((c for c in meta_cols if pattern in str(c)), None)
+                if name_col:
+                    break
             
             spend_col = next((c for c in meta_cols if '消化金額' in str(c)), None)
             if spend_col is None:
@@ -139,14 +139,6 @@ if meta_file and hs_file:
             
             attr_col = next((c for c in hs_cols if '属性' in str(c)), None)
             date_col_hs = next((c for c in hs_cols if '作成日' in str(c)), None)
-
-            # === デバッグ情報 ===
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("🔍 検出された列")
-            st.sidebar.write(f"広告名: `{name_col}`")
-            st.sidebar.write(f"消化金額: `{spend_col}`")
-            st.sidebar.write(f"Meta日付: `{date_col_meta}`")
-            st.sidebar.write(f"UTM: `{utm_col}`")
             
             # 列が見つからない場合のエラー表示
             if not all([name_col, spend_col, utm_col]):
@@ -213,6 +205,14 @@ if meta_file and hs_file:
                     before_count = len(df_hs)
                     df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
                     st.sidebar.write(f"HubSpot: {before_count}行 → {len(df_hs)}行")
+
+            # === デバッグ情報（期間フィルターの後） ===
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("🔍 検出された列")
+            st.sidebar.write(f"広告名: `{name_col}`")
+            st.sidebar.write(f"消化金額: `{spend_col}`")
+            st.sidebar.write(f"Meta日付: `{date_col_meta}`")
+            st.sidebar.write(f"UTM: `{utm_col}`")
 
             st.sidebar.markdown("---")
             st.sidebar.subheader("デバッグ情報")
