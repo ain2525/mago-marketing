@@ -12,9 +12,7 @@ from PIL import Image
 # 【１】設定とスプレッドシート書き込み関数
 # =========================================================================
 
-# 【組み込み済み】提供されたスプレッドシートURL
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1dJwYYK-koOgU0V9z83hfz-Wjjjl_UNbl_N6eHQk5OmI/edit"
-# 【設定】書き込み先のシートインデックス (1: 2枚目のシートを意味)
 KPI_SHEET_INDEX = 0
 
 def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
@@ -27,7 +25,6 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
     status_container.info("スプレッドシートへ書き込み中...")
 
     try:
-        # Streamlit Secrets から認証
         client = gspread.service_account_from_dict(
             st.secrets["google_sheets"]
         )
@@ -38,7 +35,6 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
         if sheet is None:
             raise ValueError(f"sheet_index {sheet_index} が存在しません")
 
-        # numpy.int64 → Python標準型へ変換
         def normalize(v):
             if isinstance(v, (np.integer,)):
                 return int(v)
@@ -57,7 +53,6 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
             normalize(round(float(analysis_data.get("商談化率", 0)), 2)),
         ]
 
-        # ★ すべて JSON 化できる型になっている
         data_to_write = [str(v) if not isinstance(v, (int, float)) else v for v in data_to_write]
 
         sheet.append_row(data_to_write)
@@ -71,26 +66,21 @@ def write_analysis_to_sheet(analysis_data, spreadsheet_url, sheet_index):
 # 【２】アプリのメイン処理
 # =========================================================================
 
-# --- ページ設定 ---
 st.set_page_config(page_title="Meta広告×セールスダッシュボード", layout="wide")
 
-# --- ロゴ表示 ---
 try:
     logo = Image.open("logo.png")
-
     st.markdown("<div style='text-align: center;'>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image(logo, use_column_width=True)
     st.markdown("</div>", unsafe_allow_html=True)
-
     st.markdown("<h1 style='text-align: center; margin-top: 20px;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
 except:
     st.markdown("<h1 style='text-align: center;'>Meta広告×セールスダッシュボード</h1>", unsafe_allow_html=True)
 
 st.markdown("---")
 
-# --- データ読み込み関数 ---
 def load_data(file):
     try:
         if file.name.endswith('.csv'):
@@ -104,7 +94,6 @@ def load_data(file):
         st.error(f"ファイル読み込みエラー: {e}")
         return None
 
-# --- サイドバー設定 ---
 st.sidebar.header("判定基準の設定")
 cpa_limit = st.sidebar.number_input("許容CPA（円）", value=10000, step=1000)
 connect_target = st.sidebar.slider("目標接続率（%）", 0, 100, 50)
@@ -113,7 +102,6 @@ meeting_target = st.sidebar.slider("目標商談化率（%）", 0, 50, 18)
 st.sidebar.markdown("---")
 st.sidebar.subheader("分析期間の設定")
 
-# --- ファイルアップロード ---
 col1, col2 = st.columns(2)
 with col1:
     meta_file = st.file_uploader("Meta広告実績", type=['xlsx', 'csv'])
@@ -122,45 +110,54 @@ with col2:
 
 st.markdown("---")
 
-# --- 分析実行 ---
 if meta_file and hs_file:
     df_meta = load_data(meta_file)
     df_hs = load_data(hs_file)
 
     if df_meta is not None and df_hs is not None:
         try:
-            # === Meta側：列の特定（デイリーデータ対応版）===
             meta_cols = list(df_meta.columns)
+            hs_cols = list(df_hs.columns)
             
-            # 広告名の列を検索（デイリーデータ対応）
-            name_col = next((c for c in meta_cols if 
-                             '広告の名前' in str(c) or
-                             '広告名' in str(c) or 
-                             '名前' in str(c) or 
-                             'Name' in str(c)), None)
+            # === Meta側：列の特定 ===
+            name_col = next((c for c in meta_cols if '広告の名前' in str(c)), None)
+            if name_col is None:
+                name_col = next((c for c in meta_cols if '広告名' in str(c) or '広告セット名' in str(c) or 'キャンペーン名' in str(c)), None)
+            if name_col is None:
+                name_col = next((c for c in meta_cols if '名前' in str(c) or 'Name' in str(c)), None)
             
-            # 消化金額の列を検索（デイリーデータ対応）
-            spend_col = next((c for c in meta_cols if 
-                              '消化金額' in str(c) or 
-                              'Amount' in str(c) or 
-                              '費用' in str(c) or
-                              'Spent' in str(c)), None)
+            spend_col = next((c for c in meta_cols if '消化金額' in str(c)), None)
+            if spend_col is None:
+                spend_col = next((c for c in meta_cols if 'Amount' in str(c) or '費用' in str(c) or 'Spent' in str(c)), None)
             
-            # 日付列の検索（デイリーデータ対応）
-            date_col_meta = next((c for c in meta_cols if 
-                                  'レポート開始日' in str(c) or
-                                  '開始日' in str(c) or
-                                  '日' in str(c) or 
-                                  'Date' in str(c)), None)
+            date_col_meta = next((c for c in meta_cols if 'レポート開始日' in str(c) or '開始日' in str(c)), None)
 
             # === HubSpot側：列の特定 ===
-            hs_cols = list(df_hs.columns)
-            utm_col = next((c for c in hs_cols if 'UTM' in str(c) or 'Content' in str(c)), None)
+            utm_col = next((c for c in hs_cols if 'UTM Content' in str(c)), None)
+            if utm_col is None:
+                utm_col = next((c for c in hs_cols if 'UTM' in str(c) or 'Content' in str(c)), None)
+            
             attr_col = next((c for c in hs_cols if '属性' in str(c)), None)
-            date_col_hs = next((c for c in hs_cols if '作成日' in str(c) or 'Created' in str(c) or '日付' in str(c)), None)
+            date_col_hs = next((c for c in hs_cols if '作成日' in str(c)), None)
 
+            # === デバッグ情報 ===
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("🔍 検出された列")
+            st.sidebar.write(f"広告名: `{name_col}`")
+            st.sidebar.write(f"消化金額: `{spend_col}`")
+            st.sidebar.write(f"Meta日付: `{date_col_meta}`")
+            st.sidebar.write(f"UTM: `{utm_col}`")
+            
+            # 列が見つからない場合のエラー表示
             if not all([name_col, spend_col, utm_col]):
-                st.error(f"必要な列が見つかりません。\nMeta: 広告名={name_col}, 消化金額={spend_col}\nHubSpot: UTM={utm_col}")
+                st.error(f"必要な列が見つかりません。")
+                st.write(f"Meta: 広告名={name_col}, 消化金額={spend_col}")
+                st.write(f"HubSpot: UTM={utm_col}")
+                
+                with st.expander("Meta列名一覧"):
+                    st.write(meta_cols)
+                with st.expander("HubSpot列名一覧"):
+                    st.write(hs_cols)
                 st.stop()
 
             # === 日付列の変換 ===
@@ -169,37 +166,32 @@ if meta_file and hs_file:
             if date_col_hs:
                 df_hs[date_col_hs] = pd.to_datetime(df_hs[date_col_hs], errors='coerce')
 
-            # === 🆕 期間フィルター（プリセット追加） ===
+            # === 期間フィルター ===
             filter_enabled = st.sidebar.checkbox("期間で絞り込む", value=False)
 
             if filter_enabled:
-                # プリセット選択
                 period_preset = st.sidebar.radio(
                     "期間を選択",
                     options=["今月", "先月", "カスタム"],
                     index=2
                 )
                 
-                # 現在の日時を取得
                 now = datetime.now()
                 
                 if period_preset == "今月":
-                    # 今月の1日から今日まで
                     start_date = datetime(now.year, now.month, 1).date()
                     end_date = now.date()
                     st.sidebar.info(f"📅 今月: {start_date} ~ {end_date}")
                     
                 elif period_preset == "先月":
-                    # 先月の1日から最終日まで
                     first_day_this_month = datetime(now.year, now.month, 1)
                     last_day_last_month = first_day_this_month - timedelta(days=1)
                     first_day_last_month = datetime(last_day_last_month.year, last_day_last_month.month, 1)
-                    
                     start_date = first_day_last_month.date()
                     end_date = last_day_last_month.date()
                     st.sidebar.info(f"📅 先月: {start_date} ~ {end_date}")
                     
-                else:  # カスタム
+                else:
                     if date_col_hs:
                         min_date_hs = df_hs[date_col_hs].min()
                         max_date_hs = df_hs[date_col_hs].max()
@@ -208,10 +200,8 @@ if meta_file and hs_file:
                     else:
                         start_date = st.sidebar.date_input("開始日", value=datetime.now() - timedelta(days=30))
                         end_date = st.sidebar.date_input("終了日", value=datetime.now())
-                    
                     st.sidebar.info(f"📅 カスタム: {start_date} ~ {end_date}")
 
-                # 日付フィルターの適用
                 start_datetime = pd.to_datetime(start_date)
                 end_datetime = pd.to_datetime(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
 
@@ -220,15 +210,6 @@ if meta_file and hs_file:
                 if date_col_hs:
                     df_hs = df_hs[(df_hs[date_col_hs] >= start_datetime) & (df_hs[date_col_hs] <= end_datetime)]
 
-            # === デバッグ：検出された列名を表示 ===
-            st.sidebar.markdown("---")
-            st.sidebar.subheader("🔍 検出された列")
-            st.sidebar.write(f"広告名: `{name_col}`")
-            st.sidebar.write(f"消化金額: `{spend_col}`")
-            st.sidebar.write(f"Meta日付: `{date_col_meta}`")
-            st.sidebar.write(f"UTM: `{utm_col}`")
-
-            # === デバッグ情報 ===
             st.sidebar.markdown("---")
             st.sidebar.subheader("デバッグ情報")
             st.sidebar.write(f"Meta広告データ: {len(df_meta)}行")
@@ -238,7 +219,6 @@ if meta_file and hs_file:
             df_meta['key'] = df_meta[name_col].astype(str).str.extract(r'(bn\d+)', expand=False)
             df_hs['key'] = df_hs[utm_col].astype(str).str.strip()
 
-            # デバッグ：キー抽出前後の行数
             st.sidebar.write(f"Meta（キー抽出前）: {len(df_meta)}行")
             st.sidebar.write(f"HubSpot（キー抽出前）: {len(df_hs)}行")
             
@@ -248,13 +228,8 @@ if meta_file and hs_file:
             st.sidebar.write(f"Meta（キー抽出後）: {len(df_meta)}行")
             st.sidebar.write(f"HubSpot（キー抽出後）: {len(df_hs)}行")
             
-            # デバッグ：抽出されたキーの一覧
             st.sidebar.write("抽出されたバナーID:")
             st.sidebar.write(sorted(df_meta['key'].unique()))
-            
-            # デバッグ：Meta広告データのサンプル表示
-            st.sidebar.write("Meta広告データ（最初の3行）:")
-            st.sidebar.dataframe(df_meta[[name_col, spend_col, 'key']].head(3))
 
             # === 2. Meta側の消化金額集計 ===
             meta_spend = df_meta.groupby('key')[spend_col].sum().reset_index()
@@ -264,7 +239,6 @@ if meta_file and hs_file:
             st.sidebar.write("📊 Meta消化金額（バナー別）:")
             st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
             
-            # デバッグ：Meta側の合計
             total_meta_spend = meta_spend[spend_col].sum()
             st.sidebar.write(f"Meta消化金額合計: ¥{int(total_meta_spend):,}")
 
@@ -273,14 +247,13 @@ if meta_file and hs_file:
                 リード数=('key', 'size')
             ).reset_index()
             
-            # デバッグ：HubSpot側のリード数合計
             st.sidebar.markdown("---")
             st.sidebar.write("📊 HubSpotリード数（バナー別）:")
             st.sidebar.dataframe(hs_summary, use_container_width=True)
             st.sidebar.write(f"HubSpotリード数合計: {hs_summary['リード数'].sum()}件")
 
-            # 🔄 接続数（新ルール：「コールの成果」が「あり」）
-            call_result_col = next((c for c in hs_cols if 'コールの成果' in str(c) or ('コール' in str(c) and '成果' in str(c))), None)
+            # 接続数
+            call_result_col = next((c for c in hs_cols if 'コールの成果' in str(c)), None)
             if call_result_col:
                 connect_df = df_hs[df_hs[call_result_col].fillna('').astype(str).str.contains('あり', case=False, na=False)]
                 connect_count = connect_df.groupby('key').size().reset_index(name='接続数')
@@ -290,37 +263,34 @@ if meta_file and hs_file:
                 hs_summary['接続数'] = 0
                 st.sidebar.warning("⚠️ 「コールの成果」列が見つかりません")
 
-            # 🔄 商談実施数（新ルール：「初回商談日」または「再商談日」に日付あり）
-            first_meeting_col = next((c for c in hs_cols if '初回商談日' in str(c) or ('初回' in str(c) and '商談' in str(c))), None)
-            second_meeting_col = next((c for c in hs_cols if '再商談日' in str(c) or '再商談' in str(c)), None)
+            # 商談実施数
+            first_meeting_col = next((c for c in hs_cols if '初回商談日' in str(c)), None)
+            second_meeting_col = next((c for c in hs_cols if '再商談日' in str(c)), None)
 
             deal_done_df = pd.DataFrame()
 
             if first_meeting_col:
-                # 初回商談日に日付がある行を抽出
                 df_hs[first_meeting_col] = pd.to_datetime(df_hs[first_meeting_col], errors='coerce')
                 first_deal = df_hs[df_hs[first_meeting_col].notna()][['key']].copy()
                 deal_done_df = pd.concat([deal_done_df, first_deal])
                 st.sidebar.write(f"初回商談日あり: {df_hs[first_meeting_col].notna().sum()}件")
 
             if second_meeting_col:
-                # 再商談日に日付がある行を抽出
                 df_hs[second_meeting_col] = pd.to_datetime(df_hs[second_meeting_col], errors='coerce')
                 second_deal = df_hs[df_hs[second_meeting_col].notna()][['key']].copy()
                 deal_done_df = pd.concat([deal_done_df, second_deal])
                 st.sidebar.write(f"再商談日あり: {df_hs[second_meeting_col].notna().sum()}件")
 
             if len(deal_done_df) > 0:
-                # 重複を除いてカウント（同じリードが初回も再商談も持っている場合）
                 deal_done_count = deal_done_df.groupby('key').size().reset_index(name='商談実施数')
                 hs_summary = pd.merge(hs_summary, deal_done_count, on='key', how='left')
-                st.sidebar.write(f"✅ 商談実施数（重複除外）: {len(deal_done_df.drop_duplicates())}件")
+                st.sidebar.write(f"✅ 商談実施数: {len(deal_done_df.drop_duplicates())}件")
             else:
                 hs_summary['商談実施数'] = 0
                 st.sidebar.warning("⚠️ 商談日付列が見つかりません")
 
-            # 🔄 商談予約数（新ルール：「取引ステージ」が「商談予定」）
-            stage_col = next((c for c in hs_cols if '取引ステージ' in str(c) or 'ステージ' in str(c)), None)
+            # 商談予約数
+            stage_col = next((c for c in hs_cols if '取引ステージ' in str(c)), None)
             if stage_col:
                 deal_plan_df = df_hs[df_hs[stage_col].fillna('').astype(str).str.contains('商談予定', case=False, na=False)]
                 deal_plan_count = deal_plan_df.groupby('key').size().reset_index(name='商談予約数')
@@ -330,9 +300,8 @@ if meta_file and hs_file:
                 hs_summary['商談予約数'] = 0
                 st.sidebar.warning("⚠️ 「取引ステージ」列が見つかりません")
 
-            # 🆕 進捗ステータス別カウント
+            # 進捗ステータス別カウント
             if stage_col:
-                # ステータスのマッピング定義
                 status_mapping = {
                     '新規リード': ['新規リード'],
                     '進捗中': ['FS対応中：社内検討', 'FS対応中：検討', 'FS対応中：見込み', 'FS対応中：申込'],
@@ -342,18 +311,16 @@ if meta_file and hs_file:
                     '契約': ['規約完了']
                 }
                 
-                # 各ステータスごとにカウント
                 for status_name, keywords in status_mapping.items():
                     pattern = '|'.join(keywords)
                     status_df = df_hs[df_hs[stage_col].fillna('').astype(str).str.contains(pattern, case=False, na=False)]
                     status_count = status_df.groupby('key').size().reset_index(name=status_name)
                     hs_summary = pd.merge(hs_summary, status_count, on='key', how='left')
-                    st.sidebar.write(f"{status_name}: {len(status_df)}件")
             else:
                 for status_name in ['新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']:
                     hs_summary[status_name] = 0
 
-            # 法人数（変更なし）
+            # 法人数
             if attr_col:
                 corp_df = df_hs[
                     (df_hs[attr_col].fillna('').astype(str).str.contains('法人', case=False, na=False)) &
@@ -371,7 +338,6 @@ if meta_file and hs_file:
             hs_summary['商談予約数'] = hs_summary['商談予約数'].astype(int)
             hs_summary['法人数'] = hs_summary['法人数'].astype(int)
             
-            # 進捗ステータスもint型に変換
             for status_name in ['新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']:
                 hs_summary[status_name] = hs_summary[status_name].astype(int)
 
@@ -429,7 +395,6 @@ if meta_file and hs_file:
 
             st.subheader("全体実績サマリー")
 
-            # --- 既存のHTML表示ロジック ---
             cols_row1 = st.columns([1, 1, 1, 1])
 
             with cols_row1[0]:
@@ -500,7 +465,6 @@ if meta_file and hs_file:
 
             st.markdown("---")
 
-            # --- 【重要】反映ボタンの設置 ---
             summary_data = {
                 'ファイル名': meta_file.name + ' & ' + hs_file.name,
                 '総リード数': total_leads,
@@ -532,11 +496,10 @@ if meta_file and hs_file:
             show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人率_表示', '接続数', '商談実施数', '商談予約数', '法人数']].copy()
             show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人率', '接続数', '商談実施数', '商談予約数', '法人数']
 
-            # 判定の優劣でソートするための辞書
             judgment_order = {"最優秀": 0, "優秀": 1, "要改善": 2, "停止推奨": 3}
 
             show_df['判定_rank'] = show_df['判定'].map(judgment_order)
-            show_df['バナーID_num'] = show_df['バナーID'].str.extract('(\d+)').astype(int)
+            show_df['バナーID_num'] = show_df['バナーID'].str.extract(r'(\d+)').astype(int)
 
             show_df = show_df.sort_values(by=['判定_rank', 'バナーID_num'], ascending=[True, False])
             show_df = show_df.drop(columns=['判定_rank', 'バナーID_num'])
@@ -566,7 +529,7 @@ if meta_file and hs_file:
             st.subheader("バナー別 進捗状況")
 
             progress_df = display_df[['バナーID', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']].copy()
-            progress_df['バナーID_num'] = progress_df['バナーID'].str.extract('(\d+)').astype(int)
+            progress_df['バナーID_num'] = progress_df['バナーID'].str.extract(r'(\d+)').astype(int)
             progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
             progress_df = progress_df.drop(columns=['バナーID_num'])
 
