@@ -100,6 +100,12 @@ connect_target = st.sidebar.slider("目標接続率（%）", 0, 100, 50)
 meeting_target = st.sidebar.slider("目標商談化率（%）", 0, 50, 18)
 
 st.sidebar.markdown("---")
+st.sidebar.subheader("クリエイティブ診断基準")
+ctr_target = st.sidebar.number_input("目標CTR（%）", value=1.0, step=0.1, format="%.1f")
+cpm_limit = st.sidebar.number_input("許容CPM（円）", value=3000, step=100)
+cvr_target = st.sidebar.number_input("目標LP遷移率（%）", value=10.0, step=1.0, format="%.1f")
+
+st.sidebar.markdown("---")
 st.sidebar.subheader("分析期間の設定")
 
 col1, col2 = st.columns(2)
@@ -131,6 +137,23 @@ if meta_file and hs_file:
                 spend_col = next((c for c in meta_cols if 'Amount' in str(c) or '費用' in str(c) or 'Spent' in str(c)), None)
             
             date_col_meta = next((c for c in meta_cols if 'レポート開始日' in str(c) or '開始日' in str(c)), None)
+
+            # === 新規追加：CPM、CTR、クリック数、インプレッション数の列特定 ===
+            impressions_col = next((c for c in meta_cols if c == 'インプレッション'), None)
+            if impressions_col is None:
+                impressions_col = next((c for c in meta_cols if 'インプレッション' in str(c) and 'CPM' not in str(c) and '単価' not in str(c)), None)
+            
+            cpm_col = next((c for c in meta_cols if 'CPM' in str(c) and 'インプレッション単価' in str(c)), None)
+            if cpm_col is None:
+                cpm_col = next((c for c in meta_cols if 'CPM' in str(c)), None)
+            
+            clicks_col = next((c for c in meta_cols if 'リンクのクリック' in str(c)), None)
+            if clicks_col is None:
+                clicks_col = next((c for c in meta_cols if 'Link clicks' in str(c) or 'リンククリック' in str(c)), None)
+            
+            ctr_col = next((c for c in meta_cols if 'CTR(リンククリックスルー率)' in str(c)), None)
+            if ctr_col is None:
+                ctr_col = next((c for c in meta_cols if 'CTR' in str(c) and 'リンク' in str(c)), None)
 
             # === HubSpot側：列の特定 ===
             utm_col = next((c for c in hs_cols if 'UTM Content' in str(c)), None)
@@ -213,6 +236,10 @@ if meta_file and hs_file:
             st.sidebar.write(f"消化金額: `{spend_col}`")
             st.sidebar.write(f"Meta日付: `{date_col_meta}`")
             st.sidebar.write(f"UTM: `{utm_col}`")
+            st.sidebar.write(f"インプレッション: `{impressions_col}`")
+            st.sidebar.write(f"CPM: `{cpm_col}`")
+            st.sidebar.write(f"クリック: `{clicks_col}`")
+            st.sidebar.write(f"CTR: `{ctr_col}`")
 
             st.sidebar.markdown("---")
             st.sidebar.subheader("デバッグ情報")
@@ -235,15 +262,40 @@ if meta_file and hs_file:
             st.sidebar.write("抽出されたバナーID:")
             st.sidebar.write(sorted(df_meta['key'].unique()))
 
-            # === 2. Meta側の消化金額集計 ===
-            meta_spend = df_meta.groupby('key')[spend_col].sum().reset_index()
-            meta_spend[spend_col] = pd.to_numeric(meta_spend[spend_col], errors='coerce').fillna(0)
+            # === 2. Meta側の集計（消化金額 + 新規追加指標） ===
+            agg_dict = {spend_col: 'sum'}
+            
+            # 新規追加指標の集計設定
+            if impressions_col:
+                df_meta[impressions_col] = pd.to_numeric(df_meta[impressions_col], errors='coerce').fillna(0)
+                agg_dict[impressions_col] = 'sum'
+            if clicks_col:
+                df_meta[clicks_col] = pd.to_numeric(df_meta[clicks_col], errors='coerce').fillna(0)
+                agg_dict[clicks_col] = 'sum'
+            
+            meta_agg = df_meta.groupby('key').agg(agg_dict).reset_index()
+            meta_agg[spend_col] = pd.to_numeric(meta_agg[spend_col], errors='coerce').fillna(0)
+
+            # CTRとCPMはバナー別に再計算（加重平均）
+            if impressions_col and clicks_col:
+                meta_agg['CTR_calc'] = meta_agg.apply(
+                    lambda x: (x[clicks_col] / x[impressions_col] * 100) if x[impressions_col] > 0 else 0, axis=1
+                )
+            else:
+                meta_agg['CTR_calc'] = 0
+                
+            if impressions_col:
+                meta_agg['CPM_calc'] = meta_agg.apply(
+                    lambda x: (x[spend_col] / x[impressions_col] * 1000) if x[impressions_col] > 0 else 0, axis=1
+                )
+            else:
+                meta_agg['CPM_calc'] = 0
 
             st.sidebar.markdown("---")
             st.sidebar.write("📊 Meta消化金額（バナー別）:")
-            st.sidebar.dataframe(meta_spend.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
+            st.sidebar.dataframe(meta_agg.rename(columns={'key': 'バナー', spend_col: '消化金額'}), use_container_width=True)
             
-            total_meta_spend = meta_spend[spend_col].sum()
+            total_meta_spend = meta_agg[spend_col].sum()
             st.sidebar.write(f"Meta消化金額合計: ¥{int(total_meta_spend):,}")
 
             # === 3. HubSpot側でリード数・接続・商談・法人をカウント ===
@@ -345,10 +397,18 @@ if meta_file and hs_file:
             for status_name in ['新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']:
                 hs_summary[status_name] = hs_summary[status_name].astype(int)
 
-            # === 4. Meta消化金額と結合 ===
-            result = pd.merge(hs_summary, meta_spend, on='key', how='outer')
+            # === 4. Meta集計データと結合 ===
+            result = pd.merge(hs_summary, meta_agg, on='key', how='outer')
             result[spend_col] = result[spend_col].fillna(0)
             result['リード数'] = result['リード数'].fillna(0).astype(int)
+            
+            # 新規追加指標のNaN処理
+            if impressions_col:
+                result[impressions_col] = result[impressions_col].fillna(0).astype(int)
+            if clicks_col:
+                result[clicks_col] = result[clicks_col].fillna(0).astype(int)
+            result['CTR_calc'] = result['CTR_calc'].fillna(0)
+            result['CPM_calc'] = result['CPM_calc'].fillna(0)
             
             # 進捗ステータス列もNaNを0で埋める
             for col in ['接続数', '商談実施数', '商談予約数', '法人数', '新規リード', '進捗中', '商談予定', 'ナーチャリング', '保留・NG', '契約']:
@@ -362,6 +422,10 @@ if meta_file and hs_file:
             total_deal = result['商談実施数'].sum()
             total_plan = result['商談予約数'].sum()
             total_corp = result['法人数'].sum()
+            
+            # 新規追加：全体のインプレッション・クリック数
+            total_impressions = result[impressions_col].sum() if impressions_col else 0
+            total_clicks = result[clicks_col].sum() if clicks_col else 0
 
             result['CPA'] = result.apply(
                 lambda x: int(x[spend_col] / x['リード数']) if x['リード数'] > 0 else 0, axis=1
@@ -375,6 +439,14 @@ if meta_file and hs_file:
             result['法人率'] = result.apply(
                 lambda x: (x['法人数'] / x['リード数'] * 100) if x['リード数'] > 0 else 0, axis=1
             )
+            
+            # 新規追加：LP遷移率（CVR） = リード数 / クリック数
+            if clicks_col:
+                result['LP遷移率'] = result.apply(
+                    lambda x: (x['リード数'] / x[clicks_col] * 100) if x[clicks_col] > 0 else 0, axis=1
+                )
+            else:
+                result['LP遷移率'] = 0
 
             # === 6. 判定ロジック ===
             def judge(row):
@@ -396,12 +468,42 @@ if meta_file and hs_file:
                     return "停止推奨"
 
             result['判定'] = result.apply(judge, axis=1)
+            
+            # === 新規追加：クリエイティブ診断ロジック ===
+            def creative_diagnosis(row):
+                ctr_ok = row['CTR_calc'] >= ctr_target
+                cpm_ok = row['CPM_calc'] > 0 and row['CPM_calc'] <= cpm_limit
+                cvr_ok = row['LP遷移率'] >= cvr_target
+                
+                if ctr_ok and cpm_ok and cvr_ok:
+                    return "優秀"
+                elif ctr_ok and cvr_ok:
+                    return "配信効率要改善"
+                elif ctr_ok and cpm_ok:
+                    return "LP要改善"
+                elif cpm_ok and cvr_ok:
+                    return "クリエイティブ要改善"
+                elif ctr_ok:
+                    return "LP+配信要改善"
+                elif cvr_ok:
+                    return "クリエイティブ+配信要改善"
+                elif cpm_ok:
+                    return "クリエイティブ+LP要改善"
+                else:
+                    return "全面見直し"
+            
+            result['クリエイティブ診断'] = result.apply(creative_diagnosis, axis=1)
 
             # === 7. 全体サマリー KPI計算 ===
             avg_cpa = int(total_spend / total_leads) if total_leads > 0 else 0
             avg_connect = (total_connect / total_leads * 100) if total_leads > 0 else 0
             avg_meeting = ((total_deal + total_plan) / total_leads * 100) if total_leads > 0 else 0
             avg_corp = (total_corp / total_leads * 100) if total_leads > 0 else 0
+            
+            # 新規追加：全体CTR、CPM、LP遷移率
+            avg_ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+            avg_cpm = (total_spend / total_impressions * 1000) if total_impressions > 0 else 0
+            avg_cvr = (total_leads / total_clicks * 100) if total_clicks > 0 else 0
 
             st.subheader("全体実績サマリー")
 
@@ -473,6 +575,51 @@ if meta_file and hs_file:
                 <div style='height: 140px;'></div>
                 """, unsafe_allow_html=True)
 
+            # === 新規追加：クリエイティブ指標サマリー ===
+            st.markdown("---")
+            st.subheader("クリエイティブ指標サマリー")
+            
+            cols_creative = st.columns([1, 1, 1, 1])
+            
+            with cols_creative[0]:
+                ctr_color = "rgb(40, 167, 69)" if avg_ctr >= ctr_target else "rgb(220, 53, 69)"
+                st.markdown(f"""
+                <div style='background-color: {ctr_color}; border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>平均CTR</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{avg_ctr:.2f}%</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>目標: {ctr_target}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with cols_creative[1]:
+                cpm_color = "rgb(40, 167, 69)" if avg_cpm <= cpm_limit else "rgb(220, 53, 69)"
+                st.markdown(f"""
+                <div style='background-color: {cpm_color}; border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>平均CPM</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>¥{int(avg_cpm):,}</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>上限: ¥{cpm_limit:,}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with cols_creative[2]:
+                cvr_color = "rgb(40, 167, 69)" if avg_cvr >= cvr_target else "rgb(220, 53, 69)"
+                st.markdown(f"""
+                <div style='background-color: {cvr_color}; border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>LP遷移率</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{avg_cvr:.1f}%</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>目標: {cvr_target}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with cols_creative[3]:
+                st.markdown(f"""
+                <div style='background-color: rgb(108, 117, 125); border-radius: 12px; padding: 24px; color: white; height: 140px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;'>
+                    <div style='font-size: 0.85rem; font-weight: 400; opacity: 0.95; margin-bottom: 8px;'>総クリック数</div>
+                    <div style='font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px;'>{int(total_clicks):,}</div>
+                    <div style='font-size: 0.75rem; font-weight: 400; opacity: 0.9;'>IMP: {int(total_impressions):,}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
             st.markdown("---")
 
             summary_data = {
@@ -509,7 +656,7 @@ if meta_file and hs_file:
             judgment_order = {"最優秀": 0, "優秀": 1, "要改善": 2, "停止推奨": 3}
 
             show_df['判定_rank'] = show_df['判定'].map(judgment_order)
-            show_df['バナーID_num'] = show_df['バナーID'].str.extract(r'(\d+)').astype(int)
+            show_df['バナーID_num'] = show_df['バナーID'].str.extract(r'(\d+)').astype(float).fillna(0).astype(int)
 
             show_df = show_df.sort_values(by=['判定_rank', 'バナーID_num'], ascending=[True, False])
             show_df = show_df.drop(columns=['判定_rank', 'バナーID_num'])
@@ -543,7 +690,7 @@ if meta_file and hs_file:
             # リード数が0のバナーを除外
             progress_df = progress_df[progress_df['リード数'] > 0].drop(columns=['リード数'])
             
-            progress_df['バナーID_num'] = progress_df['バナーID'].str.extract(r'(\d+)').astype(int)
+            progress_df['バナーID_num'] = progress_df['バナーID'].str.extract(r'(\d+)').astype(float).fillna(0).astype(int)
             progress_df = progress_df.sort_values(by=['バナーID_num'], ascending=[False])
             progress_df = progress_df.drop(columns=['バナーID_num'])
 
@@ -556,7 +703,7 @@ if meta_file and hs_file:
                 hide_index=True
             )
 
-            # === 10. アクション提案 ===
+            # === 10. 推奨アクション（既存） ===
             st.markdown("---")
             st.subheader("推奨アクション")
 
@@ -576,7 +723,117 @@ if meta_file and hs_file:
             if stop:
                 st.error(f"【停止検討】 {', '.join(stop)} → 予算を優秀バナーに振り替え")
 
-            # === 11. 分布図 ===
+            # === 11. 新規追加：クリエイティブ診断表 ===
+            st.markdown("---")
+            st.subheader("🎨 クリエイティブ診断表")
+            st.caption("「デザイン？コピー？LP？」改善ポイントを特定するための診断表")
+            
+            # クリエイティブ診断用のDataFrame作成
+            creative_df = display_df.copy()
+            
+            # 表示用の列を作成
+            creative_df['CTR_表示'] = creative_df['CTR_calc'].apply(lambda x: f"{x:.2f}%")
+            creative_df['CPM_表示'] = creative_df['CPM_calc'].apply(lambda x: f"¥{int(x):,}")
+            creative_df['LP遷移率_表示'] = creative_df['LP遷移率'].apply(lambda x: f"{x:.1f}%")
+            
+            # インプレッション・クリック列名の取得
+            imp_col_name = impressions_col if impressions_col else 'インプレッション'
+            click_col_name = clicks_col if clicks_col else 'クリック数'
+            
+            if impressions_col and impressions_col in creative_df.columns:
+                creative_df['IMP_表示'] = creative_df[impressions_col].apply(lambda x: f"{int(x):,}")
+            else:
+                creative_df['IMP_表示'] = '-'
+            
+            if clicks_col and clicks_col in creative_df.columns:
+                creative_df['クリック_表示'] = creative_df[clicks_col].apply(lambda x: f"{int(x):,}")
+            else:
+                creative_df['クリック_表示'] = '-'
+            
+            # クリエイティブ診断表の表示列を選択
+            creative_show_df = creative_df[['クリエイティブ診断', 'バナーID', 'IMP_表示', 'クリック_表示', 'CTR_表示', 'CPM_表示', 'リード数', 'LP遷移率_表示']].copy()
+            creative_show_df.columns = ['診断結果', 'バナーID', 'IMP', 'クリック', 'CTR', 'CPM', 'リード数', 'LP遷移率']
+            
+            # リード数が0またはIMPが0のバナーを除外
+            creative_show_df = creative_show_df[creative_show_df['リード数'] > 0]
+            
+            # 診断結果でソート
+            diagnosis_order = {
+                "優秀": 0, 
+                "配信効率要改善": 1, 
+                "LP要改善": 2, 
+                "クリエイティブ要改善": 3,
+                "LP+配信要改善": 4,
+                "クリエイティブ+配信要改善": 5,
+                "クリエイティブ+LP要改善": 6,
+                "全面見直し": 7
+            }
+            creative_show_df['診断_rank'] = creative_show_df['診断結果'].map(diagnosis_order)
+            creative_show_df['バナーID_num'] = creative_show_df['バナーID'].str.extract(r'(\d+)').astype(float).fillna(0).astype(int)
+            creative_show_df = creative_show_df.sort_values(by=['診断_rank', 'バナーID_num'], ascending=[True, False])
+            creative_show_df = creative_show_df.drop(columns=['診断_rank', 'バナーID_num'])
+            
+            def highlight_creative_row(row):
+                診断 = row['診断結果']
+                if 診断 == "優秀":
+                    color = 'background-color: #d4edda'
+                elif "LP要改善" == 診断:
+                    color = 'background-color: #fff3cd'
+                elif "クリエイティブ要改善" == 診断:
+                    color = 'background-color: #ffe0b2'
+                elif "配信効率要改善" == 診断:
+                    color = 'background-color: #d1ecf1'
+                elif "全面見直し" in 診断:
+                    color = 'background-color: #f8d7da'
+                else:
+                    color = 'background-color: #fce4ec'
+                return [color] * len(row)
+            
+            st.dataframe(
+                creative_show_df.style.apply(highlight_creative_row, axis=1),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # === 12. 新規追加：クリエイティブ診断の推奨アクション ===
+            st.markdown("---")
+            st.subheader("🔧 クリエイティブ改善アクション")
+            
+            # 診断結果ごとにバナーを分類
+            excellent_creative = result[result['クリエイティブ診断'] == "優秀"]['key'].tolist()
+            lp_improve = result[result['クリエイティブ診断'] == "LP要改善"]['key'].tolist()
+            creative_improve = result[result['クリエイティブ診断'] == "クリエイティブ要改善"]['key'].tolist()
+            delivery_improve = result[result['クリエイティブ診断'] == "配信効率要改善"]['key'].tolist()
+            lp_delivery_improve = result[result['クリエイティブ診断'] == "LP+配信要改善"]['key'].tolist()
+            creative_delivery_improve = result[result['クリエイティブ診断'] == "クリエイティブ+配信要改善"]['key'].tolist()
+            creative_lp_improve = result[result['クリエイティブ診断'] == "クリエイティブ+LP要改善"]['key'].tolist()
+            full_review = result[result['クリエイティブ診断'] == "全面見直し"]['key'].tolist()
+            
+            if excellent_creative:
+                st.success(f"✅ **優秀クリエイティブ** {', '.join(excellent_creative)}\n→ CTR・CPM・LP遷移率すべて基準クリア。このクリエイティブを横展開")
+            
+            if creative_improve:
+                st.warning(f"🎨 **デザイン/コピー改善** {', '.join(creative_improve)}\n→ CTRが低い。サムネイル・キャッチコピー・訴求軸を変更してテスト")
+            
+            if lp_improve:
+                st.warning(f"📄 **LP改善** {', '.join(lp_improve)}\n→ クリックは取れているがCVしない。LP構成・フォーム・訴求の整合性を見直し")
+            
+            if delivery_improve:
+                st.info(f"⚙️ **配信設定見直し** {', '.join(delivery_improve)}\n→ CPMが高い。ターゲティング・配信面・入札戦略を調整")
+            
+            if creative_lp_improve:
+                st.warning(f"🎨📄 **クリエイティブ+LP改善** {', '.join(creative_lp_improve)}\n→ CTRもLP遷移率も低い。訴求軸の再設計が必要")
+            
+            if lp_delivery_improve:
+                st.warning(f"📄⚙️ **LP+配信改善** {', '.join(lp_delivery_improve)}\n→ LP遷移率が低く、CPMも高い。ターゲティングとLPの両方を見直し")
+            
+            if creative_delivery_improve:
+                st.warning(f"🎨⚙️ **クリエイティブ+配信改善** {', '.join(creative_delivery_improve)}\n→ CTRが低くCPMも高い。クリエイティブ刷新と配信最適化を並行")
+            
+            if full_review:
+                st.error(f"🚨 **全面見直し** {', '.join(full_review)}\n→ 全指標が基準未達。このクリエイティブは停止し、新規制作を推奨")
+
+            # === 13. 分布図 ===
             st.markdown("---")
             st.subheader("バナー別 パフォーマンス分布")
 
@@ -593,6 +850,24 @@ if meta_file and hs_file:
                     tooltip=['key', 'CPA', '接続率', '商談化率', '法人率', 'リード数', '判定']
                 ).properties(height=450).interactive()
                 st.altair_chart(chart, use_container_width=True)
+            
+            # === 14. 新規追加：クリエイティブ分布図 ===
+            st.markdown("---")
+            st.subheader("クリエイティブ パフォーマンス分布")
+            
+            creative_chart_data = result[(result['リード数'] > 0) & (result['CTR_calc'] > 0)].copy()
+            if len(creative_chart_data) > 0:
+                creative_chart = alt.Chart(creative_chart_data).mark_circle(size=200).encode(
+                    x=alt.X('CTR_calc:Q', title='CTR (%)', scale=alt.Scale(zero=False)),
+                    y=alt.Y('LP遷移率:Q', title='LP遷移率 (%)'),
+                    color=alt.Color('クリエイティブ診断:N', legend=alt.Legend(title="診断結果"), scale=alt.Scale(
+                        domain=['優秀', 'LP要改善', 'クリエイティブ要改善', '配信効率要改善', 'LP+配信要改善', 'クリエイティブ+配信要改善', 'クリエイティブ+LP要改善', '全面見直し'],
+                        range=['#28a745', '#ffc107', '#fd7e14', '#17a2b8', '#e83e8c', '#6f42c1', '#20c997', '#dc3545']
+                    )),
+                    size=alt.Size('リード数:Q', legend=None),
+                    tooltip=['key', 'CTR_calc', 'CPM_calc', 'LP遷移率', 'リード数', 'クリエイティブ診断']
+                ).properties(height=450).interactive()
+                st.altair_chart(creative_chart, use_container_width=True)
 
         except Exception as e:
             st.error(f"処理エラー: {e}")
