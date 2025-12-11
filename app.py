@@ -659,7 +659,12 @@ if meta_file and hs_file:
             display_df['商談化率_表示'] = display_df['商談化率'].apply(lambda x: f"{x:.1f}%")
             display_df['法人率_表示'] = display_df['法人率'].apply(lambda x: f"{x:.1f}%")
 
-            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人率_表示', '接続数', '商談実施数', '商談予約数', '法人数']].copy()
+            show_df = display_df[['判定', 'バナーID', '消化金額_表示', 'リード数', 'CPA_表示', '接続率_表示', '商談化率_表示', '法人率_表示', '接続数', '商談実施数', '商談予約数', '法人数', '消化金額']].copy()
+            
+            # 消化金額0のバナーを除外
+            show_df = show_df[show_df['消化金額'] > 0]
+            show_df = show_df.drop(columns=['消化金額'])
+            
             show_df.columns = ['判定', 'バナーID', '消化金額', 'リード数', 'CPA', '接続率', '商談化率', '法人率', '接続数', '商談実施数', '商談予約数', '法人数']
 
             judgment_order = {"最優秀": 0, "優秀": 1, "要改善": 2, "停止推奨": 3}
