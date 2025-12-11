@@ -105,7 +105,6 @@ ctr_target = st.sidebar.number_input("目標CTR（%）", value=1.0, step=0.1, fo
 cvr_target = st.sidebar.number_input("目標LP遷移率（%）", value=10.0, step=1.0, format="%.1f")
 corp_target = st.sidebar.number_input("目標法人率（%）", value=50.0, step=5.0, format="%.1f")
 imp_threshold = st.sidebar.number_input("IMP閾値（CV0判定用）", value=1000, step=100)
-cv_threshold = st.sidebar.number_input("CV閾値（法人率判定用）", value=3, step=1)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("分析期間の設定")
@@ -485,18 +484,11 @@ if meta_file and hs_file:
                     else:
                         return "停止検討"
                 
-                # CV1〜2の場合：CTR + LP遷移率の2軸で診断（法人率は様子見）
-                if row['リード数'] < cv_threshold:
-                    if ctr_ok and cvr_ok:
-                        return "有望（様子見）"
-                    elif ctr_ok and not cvr_ok:
-                        return "LP要改善"
-                    elif not ctr_ok and cvr_ok:
-                        return "クリエイティブ要改善"
-                    else:
-                        return "全面見直し"
+                # CV3以上で法人0の場合：ターゲット外
+                if row['リード数'] >= 3 and row['法人数'] == 0:
+                    return "ターゲット外"
                 
-                # CV3以上の場合：CTR + LP遷移率 + 法人率の3軸で診断
+                # CV1以上の場合：CTR + LP遷移率 + 法人率の3軸で診断
                 corp_ok = row['法人率'] >= corp_target
                 
                 if ctr_ok and cvr_ok and corp_ok:
@@ -760,16 +752,16 @@ if meta_file and hs_file:
                 st.subheader("クリエイティブ診断表")
             
             with st.expander("評価指標を見る"):
-                st.markdown("""
+                st.markdown(f"""
 **診断ロジック**
 
 | CV数 | 判定軸 | 備考 |
 |------|--------|------|
-| ≥ 3 | CTR + LP遷移率 + 法人率 | 3軸で総合判定 |
-| 1〜2 | CTR + LP遷移率 | 法人率はサンプル不足のため除外 |
+| ≥ 3 & 法人0 | - | ターゲット外（即停止検討） |
+| ≥ 1 | CTR + LP遷移率 + 法人率 | 3軸で総合判定 |
 | 0 | IMP + CTR | 継続/停止の判断のみ |
 
-**CV3以上の診断結果**
+**CV1以上の診断結果**
 
 | CTR | LP遷移率 | 法人率 | 診断結果 |
 |:---:|:-------:|:-----:|---------|
@@ -782,29 +774,19 @@ if meta_file and hs_file:
 | ✗ | ✗ | ✓ | クリエイティブ+LP要改善 |
 | ✗ | ✗ | ✗ | 全面見直し |
 
-**CV1〜2の診断結果**
-
-| CTR | LP遷移率 | 診断結果 |
-|:---:|:-------:|---------|
-| ✓ | ✓ | 有望（様子見） |
-| ✓ | ✗ | LP要改善 |
-| ✗ | ✓ | クリエイティブ要改善 |
-| ✗ | ✗ | 全面見直し |
-
 **CV0の診断結果**
 
 | IMP | CTR | 診断結果 |
 |:---:|:---:|---------|
-| < 閾値 | - | データ不足 |
-| ≥ 閾値 | ✓ | 継続監視 |
-| ≥ 閾値 | ✗ | 停止検討 |
+| < {imp_threshold:,} | - | データ不足 |
+| ≥ {imp_threshold:,} | ✓ | 継続監視 |
+| ≥ {imp_threshold:,} | ✗ | 停止検討 |
 
 **基準値（サイドバーで変更可能）**
 - 目標CTR: {ctr_target}%
 - 目標LP遷移率: {cvr_target}%
 - 目標法人率: {corp_target}%
 - IMP閾値: {imp_threshold:,}
-- CV閾値: {cv_threshold}件
                 """)
             
             st.caption("改善ポイントを特定するための診断表")
@@ -849,14 +831,14 @@ if meta_file and hs_file:
             # 診断結果でソート
             diagnosis_order = {
                 "優秀": 0, 
-                "有望（様子見）": 1,
-                "ターゲット要見直し": 2,
-                "LP要改善": 3, 
-                "クリエイティブ要改善": 4,
-                "LP+ターゲット要見直し": 5,
-                "クリエイティブ+ターゲット要見直し": 6,
-                "クリエイティブ+LP要改善": 7,
-                "全面見直し": 8,
+                "ターゲット要見直し": 1,
+                "LP要改善": 2, 
+                "クリエイティブ要改善": 3,
+                "LP+ターゲット要見直し": 4,
+                "クリエイティブ+ターゲット要見直し": 5,
+                "クリエイティブ+LP要改善": 6,
+                "全面見直し": 7,
+                "ターゲット外": 8,
                 "継続監視": 9,
                 "停止検討": 10,
                 "データ不足": 11
@@ -870,8 +852,6 @@ if meta_file and hs_file:
                 診断 = row['診断結果']
                 if 診断 == "優秀":
                     color = 'background-color: #d4edda'
-                elif 診断 == "有望（様子見）":
-                    color = 'background-color: #d1ecf1'
                 elif 診断 == "継続監視":
                     color = 'background-color: #e2e3e5'
                 elif "LP要改善" == 診断:
@@ -882,7 +862,7 @@ if meta_file and hs_file:
                     color = 'background-color: #d1ecf1'
                 elif "データ不足" == 診断:
                     color = 'background-color: #f5f5f5'
-                elif "停止検討" in 診断 or "全面見直し" in 診断:
+                elif "ターゲット外" in 診断 or "停止検討" in 診断 or "全面見直し" in 診断:
                     color = 'background-color: #f8d7da'
                 else:
                     color = 'background-color: #fce4ec'
@@ -900,7 +880,6 @@ if meta_file and hs_file:
             
             # 診断結果ごとにバナーを分類
             excellent_creative = result[result['クリエイティブ診断'] == "優秀"]['key'].tolist()
-            promising = result[result['クリエイティブ診断'] == "有望（様子見）"]['key'].tolist()
             target_improve = result[result['クリエイティブ診断'] == "ターゲット要見直し"]['key'].tolist()
             lp_improve = result[result['クリエイティブ診断'] == "LP要改善"]['key'].tolist()
             creative_improve = result[result['クリエイティブ診断'] == "クリエイティブ要改善"]['key'].tolist()
@@ -908,15 +887,13 @@ if meta_file and hs_file:
             creative_target_improve = result[result['クリエイティブ診断'] == "クリエイティブ+ターゲット要見直し"]['key'].tolist()
             creative_lp_improve = result[result['クリエイティブ診断'] == "クリエイティブ+LP要改善"]['key'].tolist()
             full_review = result[result['クリエイティブ診断'] == "全面見直し"]['key'].tolist()
+            target_miss = result[result['クリエイティブ診断'] == "ターゲット外"]['key'].tolist()
             monitoring = result[result['クリエイティブ診断'] == "継続監視"]['key'].tolist()
             stop_consider = result[result['クリエイティブ診断'] == "停止検討"]['key'].tolist()
             data_shortage = result[result['クリエイティブ診断'] == "データ不足"]['key'].tolist()
             
             if excellent_creative:
                 st.success(f"**優秀クリエイティブ** {', '.join(excellent_creative)}\n→ CTR・LP遷移率・法人率すべて基準クリア。このクリエイティブを横展開")
-            
-            if promising:
-                st.success(f"**有望（様子見）** {', '.join(promising)}\n→ CTR・LP遷移率OK。CV数が増えたら法人率も確認")
             
             if creative_improve:
                 st.warning(f"**デザイン/コピー改善** {', '.join(creative_improve)}\n→ CTRが低い。サムネイル・キャッチコピー・訴求軸を変更してテスト")
@@ -938,6 +915,9 @@ if meta_file and hs_file:
             
             if full_review:
                 st.error(f"**全面見直し** {', '.join(full_review)}\n→ 主要指標が基準未達。このクリエイティブは停止し、新規制作を推奨")
+            
+            if target_miss:
+                st.error(f"**ターゲット外** {', '.join(target_miss)}\n→ CV3件以上あるが法人ゼロ。個人しか来ていない。停止推奨")
             
             if monitoring:
                 st.info(f"**継続監視（CV0）** {', '.join(monitoring)}\n→ CTRは基準クリア。CV獲得まで配信継続")
@@ -976,8 +956,8 @@ if meta_file and hs_file:
                     x=alt.X('CTR_calc:Q', title='CTR (%)', scale=alt.Scale(zero=False)),
                     y=alt.Y('LP遷移率:Q', title='LP遷移率 (%)'),
                     color=alt.Color('クリエイティブ診断:N', legend=alt.Legend(title="診断結果"), scale=alt.Scale(
-                        domain=['優秀', '有望（様子見）', 'ターゲット要見直し', 'LP要改善', 'クリエイティブ要改善', 'LP+ターゲット要見直し', 'クリエイティブ+ターゲット要見直し', 'クリエイティブ+LP要改善', '全面見直し'],
-                        range=['#28a745', '#17a2b8', '#007bff', '#ffc107', '#fd7e14', '#e83e8c', '#6f42c1', '#20c997', '#dc3545']
+                        domain=['優秀', 'ターゲット要見直し', 'LP要改善', 'クリエイティブ要改善', 'LP+ターゲット要見直し', 'クリエイティブ+ターゲット要見直し', 'クリエイティブ+LP要改善', '全面見直し', 'ターゲット外'],
+                        range=['#28a745', '#17a2b8', '#ffc107', '#fd7e14', '#e83e8c', '#6f42c1', '#20c997', '#dc3545', '#343a40']
                     )),
                     size=alt.Size('リード数:Q', legend=None),
                     tooltip=['key', 'CTR_calc', 'LP遷移率', '法人率', 'リード数', 'クリエイティブ診断']
