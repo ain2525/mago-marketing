@@ -754,8 +754,9 @@ if meta_file and hs_file:
             creative_show_df = creative_df[['クリエイティブ診断', 'バナーID', 'IMP_表示', 'クリック_表示', 'CTR_表示', 'CPM_表示', 'リード数', 'LP遷移率_表示']].copy()
             creative_show_df.columns = ['診断結果', 'バナーID', 'IMP', 'クリック', 'CTR', 'CPM', 'リード数', 'LP遷移率']
             
-            # リード数が0またはIMPが0のバナーを除外
-            creative_show_df = creative_show_df[creative_show_df['リード数'] > 0]
+            # IMP0のみ除外（配信されていないので診断不能）、CV0は含める
+            if impressions_col and impressions_col in creative_df.columns:
+                creative_show_df = creative_show_df[creative_df[impressions_col] > 0]
             
             # 診断結果でソート
             diagnosis_order = {
